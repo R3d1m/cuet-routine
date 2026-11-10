@@ -122,9 +122,9 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
           <h2 className="text-3xl font-bold tracking-tight uppercase text-black">
             Semester Routine Management
           </h2>
-          <p className="text-xs text-neutral-600 max-w-lg mx-auto mt-2">
+          {/* <p className="text-xs text-neutral-600 max-w-lg mx-auto mt-2">
             Automated conflict resolution with senior faculty priority, physical lab scheduling, and 5-batch clash detection.
-          </p>
+          </p> */}
         </div>
 
         {/* PRIMARY ACTIONS AREA */}
@@ -145,7 +145,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                   Current Routine (View & Edit)
                 </h3>
                 <p className="text-xs text-neutral-600 mb-6">
-                  Inspect and modify an active semester routine. View weekly grids, adjust classes, check lab occupancy, and export official printable PDFs.
+                  Inspect and modify an active semester routine.
                 </p>
 
                 {/* Active Batch Selector */}
@@ -216,26 +216,26 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                   Create New Routine
                 </h3>
                 <p className="text-xs text-neutral-300 mb-6">
-                  Start a step-by-step routine generation wizard for an upcoming semester. Auto-loads official curriculum courses, sets teacher availability, assigns labs, and auto-schedules with seniority rules.
+                  Start a step-by-step routine generation wizard for an upcoming semester.
                 </p>
 
                 {/* Features List */}
                 <div className="space-y-2 mb-6 text-xs font-mono">
                   <div className="flex items-center gap-2 text-neutral-300">
                     <BookOpen className="w-3.5 h-3.5 text-white" />
-                    <span>Auto-loads official 8-term CUET syllabus</span>
+                    <span>Auto-loads official syllabus</span>
                   </div>
-                  <div className="flex items-center gap-2 text-neutral-300">
+                  {/* <div className="flex items-center gap-2 text-neutral-300">
                     <ShieldCheck className="w-3.5 h-3.5 text-white" />
                     <span>Senior faculty priority conflict engine</span>
-                  </div>
+                  </div> */}
                   <div className="flex items-center gap-2 text-neutral-300">
                     <Layers className="w-3.5 h-3.5 text-white" />
                     <span>"Any Available CSE Lab" smart routing</span>
                   </div>
                   <div className="flex items-center gap-2 text-neutral-300">
                     <Clock className="w-3.5 h-3.5 text-white" />
-                    <span>Drag-and-drop interactive canvas solver</span>
+                    <span>Drag-and-drop interactive canvas</span>
                   </div>
                 </div>
               </div>
@@ -244,7 +244,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                 onClick={onCreateNew}
                 className="w-full py-3 text-xs font-bold uppercase tracking-wider border-2 border-white bg-white text-black hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2"
               >
-                <span>Create New Routine Wizard</span>
+                <span>Create New Routine</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -264,27 +264,27 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                 Create New Semester Routine
               </h3>
               <p className="text-xs text-neutral-300 mb-6 leading-relaxed">
-                The previous academic semester has completed. All classrooms and specialized laboratories have been released. 
-                Begin scheduling the new upcoming semester with the automated CUET routine generator.
+                {/* The previous academic semester has completed. All classrooms and specialized laboratories have been released. 
+                Begin scheduling the new upcoming semester with the automated CUET routine generator. */}
               </p>
 
               {/* Features List */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8 text-xs font-mono">
                 <div className="flex items-center gap-2 text-neutral-300">
                   <BookOpen className="w-4 h-4 text-white shrink-0" />
-                  <span>Official 8-term CUET syllabus</span>
+                  <span>Official CUET syllabus</span>
                 </div>
-                <div className="flex items-center gap-2 text-neutral-300">
+                {/* <div className="flex items-center gap-2 text-neutral-300">
                   <ShieldCheck className="w-4 h-4 text-white shrink-0" />
                   <span>Senior faculty clash precedence</span>
-                </div>
+                </div> */}
                 <div className="flex items-center gap-2 text-neutral-300">
                   <Layers className="w-4 h-4 text-white shrink-0" />
                   <span>Free classroom & lab auto-routing</span>
                 </div>
                 <div className="flex items-center gap-2 text-neutral-300">
                   <Clock className="w-4 h-4 text-white shrink-0" />
-                  <span>Drag-and-drop routine canvas</span>
+                  <span>Drag-and-drop routine</span>
                 </div>
               </div>
 
@@ -292,7 +292,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                 onClick={onCreateNew}
                 className="w-full py-3.5 text-xs font-bold uppercase tracking-wider border-2 border-white bg-white text-black hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2 shadow-[2px_2px_0px_0px_rgba(255,255,255,0.8)]"
               >
-                <span>Start Routine Creation Wizard</span>
+                <span>Start Routine Creation</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -306,7 +306,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
               <div className="flex items-center gap-2">
                 <Archive className="w-4 h-4 text-black" />
                 <h3 className="text-sm font-bold uppercase tracking-wider text-black">
-                  Past Semester Routines (Official Archived Records)
+                  Past Semester Routines (Official Archived)
                 </h3>
               </div>
               <span className="text-[11px] font-mono text-neutral-600">

@@ -265,9 +265,9 @@ export const TimetableGrid: React.FC = () => {
           <div className="flex items-center gap-3">
             <Lock className="w-5 h-5 text-white shrink-0" />
             <div>
-              <div className="font-bold text-sm uppercase">ROUTINE PERMANENTLY DEACTIVATED & ARCHIVED</div>
+              <div className="font-bold text-sm uppercase">ROUTINE ARCHIVED</div>
               <div className="text-neutral-300 text-[11px] mt-0.5">
-                Preparatory Leave (PL / DL) commenced on {activeBatch.plDlDate || 'exam period'}. All classrooms and laboratories have been released. Routine is locked in read-only Official Format.
+                Preparatory Leave (PL / DL) commenced on {activeBatch.plDlDate || 'exam period'}.
               </div>
             </div>
           </div>
@@ -276,7 +276,7 @@ export const TimetableGrid: React.FC = () => {
             className="px-3.5 py-1.5 bg-white text-black text-xs font-bold font-mono hover:bg-neutral-100 flex items-center gap-1.5 shrink-0"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>View Official Print Format</span>
+            <span>View Official Print</span>
           </Link>
         </div>
       )}
