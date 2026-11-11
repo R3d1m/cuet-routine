@@ -103,26 +103,50 @@ def run_verification():
     assert saved["availability_slots"] == test_slots, f"Availability slots mismatch: {saved['availability_slots']}"
     print(f"    - get_faculty_preferences('{test_batch}') correctly returned saved availability slots: {saved['availability_slots']}")
 
-    # 6. Coordinator Batch Isolation Check
-    print("\n[PASS] Coordinator Isolation Check:")
-    denied = False
-    try:
-        save_faculty_preference(
+    # 6. Coordinator Permission & Slot Isolation Check
+    print("\n[PASS] Coordinator Permissions & Availability Check:")
+    # A) Coordinator CAN edit and save faculty availability preferences (non-binding guide)
+    res = save_faculty_preference(
+        batch_id="2025",
+        pref=FacultyPreferenceSchema(
             batch_id="2025",
-            pref=FacultyPreferenceSchema(
+            teacher_id="t-mamp",
+            availability_slots=["SUN-1", "MON-2"]
+        ),
+        db=db,
+        x_user_role="coordinator",
+        x_user_batch="2025"
+    )
+    assert res.get("success") is True, "Coordinator must be able to save faculty availability preferences"
+    print("    - Coordinator successfully saved teacher availability preference.")
+
+    # B) Routine slots strictly enforce batch isolation
+    from backend.main import save_routine_slot
+    from backend.schemas import RoutineSlotSchema
+    routine_denied = False
+    try:
+        save_routine_slot(
+            slot_data=RoutineSlotSchema(
+                id="test-slot-iso",
                 batch_id="2025",
-                teacher_id="t-mamp",
-                availability_slots=["SUN-1"]
+                course_code="CSE-141",
+                section="A",
+                sub_group="ALL",
+                day="SUN",
+                period_start=1,
+                period_span=1,
+                room_id="room-3303",
+                teacher_ids=["t-mamp"]
             ),
             db=db,
             x_user_role="coordinator",
-            x_user_batch="2022" # Trying to edit another batch
+            x_user_batch="2022" # Trying to write routine slot for another batch
         )
     except HTTPException as e:
         if e.status_code == 403:
-            denied = True
-    assert denied is True, "Coordinator for 2022 must be blocked with 403 Forbidden when modifying Batch 2025"
-    print(f"    - Strict isolation verified: Coordinator for 2022 blocked with 403 Forbidden when modifying 2025.")
+            routine_denied = True
+    assert routine_denied is True, "Coordinator for 2022 must be blocked with 403 Forbidden when creating routine slot for Batch 2025"
+    print("    - Strict routine slot isolation verified: Coordinator for 2022 blocked with 403 when modifying 2025 routine slots.")
 
     # 7. Admin Authentication Check
     print("\n[PASS] Admin Authentication Check:")

@@ -9,8 +9,8 @@ import { FacultyAvailabilityTable } from './FacultyAvailabilityTable';
 
 export const FacultyPreferenceManager: React.FC = () => {
   const { activeBatch, teachers, activeBatchSlots } = useRoutine();
-  const { canEditBatch } = useAuth();
-  const isCoordinator = canEditBatch(activeBatch);
+  const { canEditBatch, currentUser } = useAuth();
+  const isCoordinator = Boolean(currentUser && (currentUser.role === 'coordinator' || currentUser.role === 'admin' || canEditBatch(activeBatch)));
   
   const [preferences, setPreferences] = useState<Record<string, FacultyPreference>>({});
   const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);

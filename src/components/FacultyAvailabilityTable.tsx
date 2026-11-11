@@ -54,11 +54,19 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
   teacherCourseMap = {}
 }) => {
   const { activeBatch, batches, teachers, rooms, slots, activeBatchSlots } = useRoutine();
-  const { canEditBatch } = useAuth();
+  const { canEditBatch, currentUser } = useAuth();
 
   const currentBatchId = batchId || activeBatch?.id || '2022';
   const targetBatch = batches.find(b => b.id === currentBatchId) || activeBatch;
-  const isAuthorized = canEditBatch(targetBatch);
+  // Coordinators and Administrators can edit teacher availability slots
+  const isAuthorized = Boolean(
+    currentUser && (
+      currentUser.role === 'coordinator' || 
+      currentUser.role === 'admin' || 
+      canEditBatch(targetBatch) || 
+      isEmbeddedInWizard
+    )
+  );
 
   const [preferences, setPreferences] = useState<Record<string, FacultyPreference>>({});
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
@@ -192,7 +200,7 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
     }
 
     const existing = preferences[selectedTeacherId];
-    if (existing && existing.availabilitySlots && existing.availabilitySlots.length > 0) {
+    if (existing && existing.availabilitySlots !== undefined && existing.availabilitySlots !== null) {
       setSelectedSlots(existing.availabilitySlots);
       setPreferenceNotes(existing.notes || '');
     } else {
@@ -210,14 +218,37 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
       : new Map<string, RoutineCommitment>();
   }, [selectedTeacherId, teacherRoutineCommitmentsMap]);
 
+  // Helper to update slots and live preferences state simultaneously
+  const applySlotsToSelectedTeacher = (newSlots: string[]) => {
+    if (!isAuthorized || !selectedTeacherId) return;
+    setSelectedSlots(newSlots);
+
+    // Keep preferences map in sync so top table count updates immediately
+    setPreferences(prev => {
+      const existing = prev[selectedTeacherId];
+      return {
+        ...prev,
+        [selectedTeacherId]: {
+          id: existing?.id,
+          batchId: currentBatchId,
+          teacherId: selectedTeacherId,
+          preferredDays: existing?.preferredDays || ['SUN', 'MON', 'TUE', 'WED', 'THU'],
+          preferredTimeOfDay: existing?.preferredTimeOfDay || 'any',
+          maxClassesPerDay: existing?.maxClassesPerDay || 2,
+          notes: preferenceNotes || existing?.notes || '',
+          availabilitySlots: newSlots
+        }
+      };
+    });
+  };
+
   // Toggle a single slot
   const handleToggleSlot = (slotKey: string) => {
-    if (!isAuthorized) return;
-    setSelectedSlots(prev => 
-      prev.includes(slotKey) 
-        ? prev.filter(s => s !== slotKey)
-        : [...prev, slotKey]
-    );
+    if (!isAuthorized || !selectedTeacherId) return;
+    const newSlots = selectedSlots.includes(slotKey) 
+      ? selectedSlots.filter(s => s !== slotKey)
+      : [...selectedSlots, slotKey];
+    applySlotsToSelectedTeacher(newSlots);
   };
 
   // 1-Click: Sync with Current Routines
@@ -227,7 +258,7 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
 
     const freeSlots = getFreeSlotsFromCurrentRoutines(tid);
     if (!teacherIdToSync || teacherIdToSync === selectedTeacherId) {
-      setSelectedSlots(freeSlots);
+      applySlotsToSelectedTeacher(freeSlots);
     }
 
     // If saving directly for a teacher row
@@ -255,29 +286,29 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
   const handleSelectAll = () => {
     const all: string[] = [];
     DAYS.forEach(d => PERIODS.forEach(p => all.push(`${d}-${p}`)));
-    setSelectedSlots(all);
+    applySlotsToSelectedTeacher(all);
   };
 
   const handleClearAll = () => {
-    setSelectedSlots([]);
+    applySlotsToSelectedTeacher([]);
   };
 
   const handleSelectMorning = () => {
     const morningSlots: string[] = [];
     DAYS.forEach(d => [1, 2, 3].forEach(p => morningSlots.push(`${d}-${p}`)));
-    setSelectedSlots(morningSlots);
+    applySlotsToSelectedTeacher(morningSlots);
   };
 
   const handleSelectMidDay = () => {
     const midSlots: string[] = [];
     DAYS.forEach(d => [4, 5, 6].forEach(p => midSlots.push(`${d}-${p}`)));
-    setSelectedSlots(midSlots);
+    applySlotsToSelectedTeacher(midSlots);
   };
 
   const handleSelectAfternoon = () => {
     const aftSlots: string[] = [];
     DAYS.forEach(d => [7, 8, 9].forEach(p => aftSlots.push(`${d}-${p}`)));
-    setSelectedSlots(aftSlots);
+    applySlotsToSelectedTeacher(aftSlots);
   };
 
   // Add course teacher via dropdown
@@ -286,8 +317,28 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
     if (!manuallyAddedTeacherIds.includes(newTeacherInputId)) {
       setManuallyAddedTeacherIds(prev => [...prev, newTeacherInputId]);
     }
+    // Select the newly added teacher
     setSelectedTeacherId(newTeacherInputId);
     setNewTeacherInputId('');
+    // Auto-fetch free slots from current routines
+    const freeSlots = getFreeSlotsFromCurrentRoutines(newTeacherInputId);
+    setSelectedSlots(freeSlots);
+    // Auto‑save a default preference for this teacher
+    const defaultPref: FacultyPreference = {
+      id: undefined,
+      batchId: currentBatchId,
+      teacherId: newTeacherInputId,
+      preferredDays: ['SUN', 'MON', 'TUE', 'WED', 'THU'],
+      preferredTimeOfDay: 'any',
+      maxClassesPerDay: 2,
+      notes: 'Auto‑created from course teacher addition',
+      availabilitySlots: freeSlots,
+    };
+    api.saveFacultyPreference(currentBatchId, defaultPref).then(() => {
+      setPreferences(prev => ({ ...prev, [newTeacherInputId]: defaultPref }));
+    }).catch(err => {
+      console.warn('Failed to auto‑save preference for new teacher:', err);
+    });
   };
 
   // Save preference to backend
@@ -347,10 +398,15 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
           </p>
         </div>
 
-        {!isAuthorized && (
+        {isAuthorized ? (
+          <div className="px-3 py-1.5 bg-black text-white border border-black text-xs font-mono flex items-center gap-2 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Coordinator Mode: Slot Editing Enabled</span>
+          </div>
+        ) : (
           <div className="px-3 py-1.5 bg-neutral-100 border border-black text-xs font-mono flex items-center gap-2">
             <Lock className="w-3.5 h-3.5" />
-            <span>Read-Only: Coordinated by {targetBatch.coordinatorName}</span>
+            <span>Read-Only: Coordinated by {targetBatch?.coordinatorName || 'Batch Coordinator'}</span>
           </div>
         )}
       </div>
@@ -642,27 +698,27 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
                             type="button"
                             onClick={() => handleToggleSlot(slotKey)}
                             disabled={!isAuthorized}
-                            className={`w-full min-h-[48px] p-1 text-[10px] font-bold border transition-all flex flex-col justify-between items-center ${
+                            className={`w-full min-h-[50px] p-1 text-[10px] font-bold border transition-all flex flex-col justify-between items-center ${
                               commitment
                                 ? isAvailable
-                                  ? 'bg-neutral-800 text-white border-black ring-2 ring-amber-400'
-                                  : 'bg-neutral-900 text-neutral-300 border-black opacity-90'
+                                  ? 'bg-neutral-800 text-white border-black ring-2 ring-amber-400 hover:bg-neutral-700'
+                                  : 'bg-neutral-900 text-neutral-300 border-black opacity-90 hover:opacity-100'
                                 : isAvailable
-                                  ? 'bg-black text-white border-black hover:bg-neutral-800'
+                                  ? 'bg-black text-white border-black hover:bg-neutral-800 shadow-sm'
                                   : 'bg-neutral-50 text-neutral-400 border-neutral-300 hover:bg-neutral-200 hover:text-black line-through'
-                            } ${!isAuthorized ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                            } ${!isAuthorized ? 'cursor-not-allowed opacity-50' : 'cursor-pointer active:scale-95'}`}
                           >
-                            <span className="text-[9px] uppercase tracking-wider">
-                              {commitment ? (isAvailable ? 'OVERRIDE YES' : 'IN CLASS') : (isAvailable ? 'AVAILABLE' : 'FREE / NO')}
+                            <span className="text-[9px] uppercase tracking-wider font-mono">
+                              {commitment ? (isAvailable ? 'OVERRIDE: YES' : 'IN CLASS') : (isAvailable ? 'AVAILABLE' : 'UNAVAILABLE')}
                             </span>
 
                             {commitment ? (
-                              <div className="text-[8px] leading-tight font-normal text-amber-300 bg-black/60 px-1 py-0.5 rounded-sm w-full mt-0.5 truncate">
-                                [B-{commitment.batchId}] {commitment.courseCode} ({commitment.roomName})
+                              <div className="text-[8px] leading-tight font-normal text-amber-300 bg-black/60 px-1 py-0.5 rounded-sm w-full mt-0.5 truncate" title={`Batch ${commitment.batchId}: ${commitment.courseCode} (${commitment.roomName})`}>
+                                [B-{commitment.batchId}] {commitment.courseCode}
                               </div>
                             ) : (
-                              <span className="text-[8px] opacity-75">
-                                {isAvailable ? '✓ Open' : '—'}
+                              <span className="text-[8px] opacity-75 font-mono">
+                                {isAvailable ? '✓ Available' : '✗ Off'}
                               </span>
                             )}
                           </button>

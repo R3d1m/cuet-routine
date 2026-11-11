@@ -5,7 +5,7 @@ import { api } from '../services/api';
 interface AuthContextType {
   currentUser: User | null;
   isAdmin: boolean;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (username: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
   logout: () => void;
   canEditBatch: (batch: Batch) => boolean;
   canEditSlot: (slot: RoutineSlot, batch: Batch) => boolean;
@@ -43,12 +43,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser]);
 
-  const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> => {
     try {
       const user = await api.loginUser(username, password);
       setCurrentUser(user);
       setIsLoginModalOpen(false);
-      return { success: true };
+      return { success: true, user };
     } catch (err: any) {
       console.error('Login error:', err);
       return { success: false, error: err.message || 'Invalid username or password' };

@@ -411,10 +411,10 @@ def save_faculty_preference(
     x_user_role: Optional[str] = Header(None),
     x_user_batch: Optional[str] = Header(None)
 ):
-    if x_user_role == "coordinator" and x_user_batch and x_user_batch != batch_id:
+    if x_user_role not in ["coordinator", "admin"] and x_user_role is not None:
         raise HTTPException(
             status_code=403,
-            detail=f"Access Denied: You are coordinator for Batch {x_user_batch}. You cannot modify preferences for Batch {batch_id}."
+            detail="Access Denied: Only course coordinators and administrators can modify faculty availability preferences."
         )
 
     existing = db.query(FacultyPreferenceModel).filter(

@@ -24,12 +24,14 @@ export const LoginPage: React.FC = () => {
     const res = await login(username.trim(), password.trim());
     setIsSubmitting(false);
 
-    if (res.success) {
-      if (currentUser?.role === 'coordinator' && currentUser.assignedBatchId) {
-        navigate(`/batch/${currentUser.assignedBatchId}`);
+    if (res.success && res.user) {
+      if (res.user.role === 'coordinator' && res.user.assignedBatchId) {
+        navigate(`/batch/${res.user.assignedBatchId}`);
       } else {
         navigate('/portal');
       }
+    } else if (res.success) {
+      navigate('/portal');
     } else {
       setError(res.error || 'Invalid username or password.');
     }
