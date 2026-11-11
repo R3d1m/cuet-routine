@@ -14,6 +14,9 @@ The system models the complete **4-year undergraduate degree** structure at CUET
 - **Clash & Constraint Engine**: Real-time room, lab, and faculty conflict detection across batches.
 - **Official University Layout**: Strict university format printable routines with official signatures and department stamps.
 - **Lab Occupancy Matrix & Quotas**: Real-time tracking of shared computer laboratories and faculty contact hours.
+- **Physical Lecture Rooms & Laboratories**: Comprehensive directory including lecture rooms `3201-3208`, `3301-3308`, `3401-3408` and labs (`OS Lab`, `Compiler Lab`, `Computer Lab`, `Multimedia Lab`, `N/W & Interfacing Lab`, `Physics Lab`, `Chemistry Lab`).
+- **Faculty Availability Preference List**: Non-binding coordinator schedule preference matrix to capture desired available slots per faculty member.
+- **Strict Role Isolation & Landing Auth**: Coordinators edit only their assigned batch; landing login page with route protection.
 
 ---
 
@@ -88,6 +91,22 @@ The system models the complete **4-year undergraduate degree** structure at CUET
 | **Batch 2023 Coordinator** | `murad` | `cuet123` | Hasan Murad (Level-2 Term-II) |
 | **Batch 2024 Coordinator** | `rizvi` | `cuet123` | Md. Atiqul Islam Rizvi (Level-2 Term-I) |
 | **Batch 2025 Coordinator** | `mamun` | `cuet123` | Md. Al-Mamun Provath (Level-1 Term-I) |
+
+---
+
+## 🧪 Verification & Automated Testing
+
+Run the feature verification test suite from the repository root:
+```bash
+python verify_features.py
+```
+This confirms:
+- Master records (faculty, users, courses) remain intact in NeonDB / SQLite.
+- Physical lecture rooms `3201-3208`, `3301-3308`, `3401-3408` and all labs are seeded.
+- Routine slots cleanup status.
+- Faculty availability preferences API CRUD and non-binding slot persistence.
+- Strict coordinator batch isolation.
+- Admin authentication and governance access.
 
 ---
 

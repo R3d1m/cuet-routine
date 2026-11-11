@@ -97,34 +97,34 @@ def init_and_seed_db():
                 initials=t[5], email=t[6], is_external=t[7]
             ))
 
-        # 2. Rooms (Classrooms + Labs)
-        rooms_data = [
-            ("room-3303", "Room 3303 (Sec A)", "3303 (Sec A)", "Academic Building-3", "1st Floor", "classroom", 65),
-            ("room-3307", "Room 3307 (Sec B)", "3307 (Sec B)", "Academic Building-3", "1st Floor", "classroom", 65),
-            ("room-3306", "Room 3306 (Sec A)", "3306 (Sec A)", "Academic Building-3", "1st Floor", "classroom", 65),
-            ("room-3308", "Room 3308 (Sec B)", "3308 (Sec B)", "Academic Building-3", "1st Floor", "classroom", 65),
-            ("room-3406", "Room 3406 (Sec A)", "3406 (Sec A)", "Academic Building-3", "2nd Floor", "classroom", 65),
-            ("room-3408", "Room 3408 (Sec B)", "3408 (Sec B)", "Academic Building-3", "2nd Floor", "classroom", 65),
-            ("room-3403", "Room 3403 (Sec A)", "3403 (Sec A)", "Academic Building-3", "2nd Floor", "classroom", 65),
-            ("room-3305", "Room 3305 (Sec B)", "3305 (Sec B)", "Academic Building-3", "1st Floor", "classroom", 65),
+        # 2. Rooms (Classrooms 3201-3208, 3301-3308, 3401-3408 + Labs)
+        rooms_data = []
 
-            ("lab-compiler", "Compiler Lab (5th Floor)", "Compiler Lab", "Academic Building-3", "5th Floor", "inhouse_lab", 40),
-            ("lab-multimedia", "Multimedia Lab (5th Floor)", "Multimedia Lab", "Academic Building-3", "5th Floor", "inhouse_lab", 40),
-            ("lab-network", "Network & Communication Lab (5th Floor)", "Network Lab", "Academic Building-3", "5th Floor", "inhouse_lab", 40),
-            ("lab-mp", "Microprocessor & Interfacing Lab (5th Floor)", "Microprocessor Lab", "Academic Building-3", "5th Floor", "inhouse_lab", 40),
-            ("lab-os", "Operating System Lab (3rd Floor)", "OS Lab", "Academic Building-3", "3rd Floor", "inhouse_lab", 40),
+        # Lecture rooms: 3201-3208, 3301-3308, 3401-3408
+        for num in range(3201, 3209):
+            rooms_data.append((f"room-{num}", f"Room {num}", str(num), "Academic Building-3", "2nd Floor", "classroom", 65))
+        for num in range(3301, 3309):
+            rooms_data.append((f"room-{num}", f"Room {num}", str(num), "Academic Building-3", "3rd Floor", "classroom", 65))
+        for num in range(3401, 3409):
+            rooms_data.append((f"room-{num}", f"Room {num}", str(num), "Academic Building-3", "4th Floor", "classroom", 65))
+
+        # Labs
+        rooms_data.extend([
+            ("lab-os", "OS Lab", "OS Lab", "Academic Building-3", "3rd Floor", "inhouse_lab", 40),
+            ("lab-compiler", "Compiler Lab", "Compiler Lab", "Academic Building-3", "5th Floor", "inhouse_lab", 40),
             ("lab-comp", "Computer Lab", "Computer Lab", "Academic Building-3", "3rd Floor", "inhouse_lab", 40),
-
-            ("lab-physics", "Physics Lab (Dept. of Physics)", "Physics Lab", "Science Building", "Ground Floor", "external_lab", 60),
-            ("lab-machine", "Machine Lab, Dept. of EEE (Ground Floor)", "EEE Machine Lab", "EEE Building", "Ground Floor", "external_lab", 50),
-            ("lab-drawing", "Drawing Lab (Mechanical Dept.)", "ME Drawing Lab", "Mechanical Building", "2nd Floor", "external_lab", 60),
+            ("lab-multimedia", "Multimedia Lab", "Multimedia Lab", "Academic Building-3", "5th Floor", "inhouse_lab", 40),
+            ("lab-network-interfacing", "N/W & Interfacing Lab", "N/W & Interfacing Lab", "Academic Building-3", "5th Floor", "inhouse_lab", 40),
+            ("lab-physics", "Physics Lab", "Physics Lab", "Science Building", "Ground Floor", "external_lab", 60),
             ("lab-chem", "Chemistry Lab", "Chemistry Lab", "Science Building", "1st Floor", "external_lab", 50),
-        ]
+        ])
 
         for r in rooms_data:
-            db.add(RoomModel(
-                id=r[0], name=r[1], short_name=r[2], building=r[3], floor=r[4], room_type=r[5], capacity=r[6]
-            ))
+            existing_r = db.query(RoomModel).filter(RoomModel.id == r[0]).first()
+            if not existing_r:
+                db.add(RoomModel(
+                    id=r[0], name=r[1], short_name=r[2], building=r[3], floor=r[4], room_type=r[5], capacity=r[6]
+                ))
 
         # 3. Batches
         batches_data = [

@@ -4,9 +4,9 @@ from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import get_db, Base, engine
-from .models import TeacherModel, RoomModel, BatchModel, RoutineSlotModel, FacultyPreferenceModel, UserModel
+from .models import TeacherModel, RoomModel, BatchModel, RoutineSlotModel, FacultyPreferenceModel, UserModel, CourseModel
 from .schemas import (
-    TeacherSchema, RoomSchema, BatchSchema, StartPlDlRequest, AppointCoordinatorRequest,
+    TeacherSchema, RoomSchema, CourseSchema, BatchSchema, StartPlDlRequest, AppointCoordinatorRequest,
     RoutineSlotSchema, FacultyPreferenceSchema, LoginRequest, UserResponse, CreateUserRequest
 )
 from .seed import init_and_seed_db
@@ -76,6 +76,11 @@ def delete_teacher(teacher_id: str, db: Session = Depends(get_db)):
 @app.get("/api/rooms", response_model=List[RoomSchema])
 def list_rooms(db: Session = Depends(get_db)):
     return db.query(RoomModel).all()
+
+# --- COURSES ENDPOINTS ---
+@app.get("/api/courses", response_model=List[CourseSchema])
+def list_courses(db: Session = Depends(get_db)):
+    return db.query(CourseModel).all()
 
 # --- BATCHES ENDPOINTS ---
 @app.get("/api/batches", response_model=List[BatchSchema])
@@ -259,6 +264,12 @@ def reopen_semester(batch_id: str, db: Session = Depends(get_db)):
     return {"success": True, "is_archived": False}
 
 # --- ROUTINE SLOTS ENDPOINTS ---
+@app.post("/api/routines/clear")
+def clear_all_routines(db: Session = Depends(get_db)):
+    deleted = db.query(RoutineSlotModel).delete()
+    db.commit()
+    return {"success": True, "deleted_count": deleted}
+
 @app.get("/api/routines/{batch_id}")
 def get_routine_slots(batch_id: str, db: Session = Depends(get_db)):
     slots = db.query(RoutineSlotModel).filter(RoutineSlotModel.batch_id == batch_id).all()
@@ -366,12 +377,25 @@ def get_faculty_preferences(batch_id: str, db: Session = Depends(get_db)):
             "preferred_days": json.loads(p.preferred_days_json or '["SUN","MON","TUE","WED","THU"]'),
             "preferred_time_of_day": p.preferred_time_of_day,
             "max_classes_per_day": p.max_classes_per_day,
-            "notes": p.notes
+            "notes": p.notes,
+            "availability_slots": json.loads(getattr(p, 'availability_slots_json', None) or '[]')
         })
     return results
 
 @app.post("/api/faculty-preferences/{batch_id}")
-def save_faculty_preference(batch_id: str, pref: FacultyPreferenceSchema, db: Session = Depends(get_db)):
+def save_faculty_preference(
+    batch_id: str, 
+    pref: FacultyPreferenceSchema, 
+    db: Session = Depends(get_db),
+    x_user_role: Optional[str] = Header(None),
+    x_user_batch: Optional[str] = Header(None)
+):
+    if x_user_role == "coordinator" and x_user_batch and x_user_batch != batch_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access Denied: You are coordinator for Batch {x_user_batch}. You cannot modify preferences for Batch {batch_id}."
+        )
+
     existing = db.query(FacultyPreferenceModel).filter(
         FacultyPreferenceModel.batch_id == batch_id,
         FacultyPreferenceModel.teacher_id == pref.teacher_id
@@ -382,6 +406,7 @@ def save_faculty_preference(batch_id: str, pref: FacultyPreferenceSchema, db: Se
         existing.preferred_time_of_day = pref.preferred_time_of_day
         existing.max_classes_per_day = pref.max_classes_per_day
         existing.notes = pref.notes
+        existing.availability_slots_json = json.dumps(pref.availability_slots)
     else:
         new_pref = FacultyPreferenceModel(
             id=pref.id or f"pref-{batch_id}-{pref.teacher_id}",
@@ -390,7 +415,8 @@ def save_faculty_preference(batch_id: str, pref: FacultyPreferenceSchema, db: Se
             preferred_days_json=json.dumps(pref.preferred_days),
             preferred_time_of_day=pref.preferred_time_of_day,
             max_classes_per_day=pref.max_classes_per_day,
-            notes=pref.notes
+            notes=pref.notes,
+            availability_slots_json=json.dumps(pref.availability_slots)
         )
         db.add(new_pref)
 
@@ -406,8 +432,11 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     return user
 
 @app.get("/api/auth/users", response_model=List[UserResponse])
-def list_users(db: Session = Depends(get_db)):
-    return db.query(UserModel).all()
+def list_users(role: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(UserModel)
+    if role:
+        query = query.filter(UserModel.role == role)
+    return query.all()
 
 @app.post("/api/auth/create-user", response_model=UserResponse)
 def create_user(req: CreateUserRequest, db: Session = Depends(get_db)):

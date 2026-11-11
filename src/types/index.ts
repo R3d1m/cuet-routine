@@ -95,6 +95,7 @@ export interface FacultyPreference {
   preferredTimeOfDay: 'morning' | 'midday' | 'afternoon' | 'any';
   maxClassesPerDay?: number;
   notes?: string;
+  availabilitySlots?: string[]; // e.g. ["SUN-1", "MON-3"]
 }
 
 export type ConflictType = 

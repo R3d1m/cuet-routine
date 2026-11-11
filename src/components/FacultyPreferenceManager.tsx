@@ -5,6 +5,7 @@ import { Day, FacultyPreference, Teacher } from '../types';
 import { api } from '../services/api';
 import { Users, Check, Plus, Info, Save, Lock } from 'lucide-react';
 import { SearchableTeacherSelect } from './SearchableTeacherSelect';
+import { FacultyAvailabilityTable } from './FacultyAvailabilityTable';
 
 export const FacultyPreferenceManager: React.FC = () => {
   const { activeBatch, teachers, activeBatchSlots } = useRoutine();
@@ -442,6 +443,9 @@ export const FacultyPreferenceManager: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Table below Faculty Assignment for Faculty Availability Preference List */}
+      <FacultyAvailabilityTable batchId={activeBatch.id} />
     </div>
   );
 };

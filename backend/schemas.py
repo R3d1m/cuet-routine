@@ -87,6 +87,7 @@ class FacultyPreferenceSchema(BaseModel):
     preferred_time_of_day: str = "any" # 'morning', 'midday', 'afternoon', 'any'
     max_classes_per_day: int = 2
     notes: Optional[str] = None
+    availability_slots: List[str] = []
 
 class LoginRequest(BaseModel):
     username: str

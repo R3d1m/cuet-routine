@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { CUET_CSE_CURRICULUM } from '../data/cuetCurriculum';
 import { SearchableTeacherSelect } from './SearchableTeacherSelect';
+import { FacultyAvailabilityTable } from './FacultyAvailabilityTable';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -702,6 +703,9 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
               </tbody>
             </table>
           </div>
+
+          {/* Table below Faculty Assignment for Faculty Availability Preference List */}
+          <FacultyAvailabilityTable isEmbeddedInWizard={true} />
 
           {/* Action Bar */}
           <div className="flex items-center justify-between p-4 border-2 border-black bg-white">

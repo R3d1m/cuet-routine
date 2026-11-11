@@ -25,7 +25,11 @@ export const LoginPage: React.FC = () => {
     setIsSubmitting(false);
 
     if (res.success) {
-      navigate('/portal');
+      if (currentUser?.role === 'coordinator' && currentUser.assignedBatchId) {
+        navigate(`/batch/${currentUser.assignedBatchId}`);
+      } else {
+        navigate('/portal');
+      }
     } else {
       setError(res.error || 'Invalid username or password.');
     }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { RoutineProvider, useRoutine } from './context/RoutineContext';
 import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
 import { LoginModal } from './components/LoginModal';
 import { LandingPortal } from './components/LandingPortal';
 import { CreateRoutineWizard } from './components/CreateRoutineWizard';
@@ -108,6 +109,15 @@ const WizardPage: React.FC = () => {
   );
 };
 
+// Route Guard: Wrap all internal routes so unauthenticated users are sent back to `/`
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser } = useAuth();
+  if (!currentUser) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+};
+
 export const App: React.FC = () => {
   return (
     <RoutineProvider>
@@ -115,17 +125,19 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LoginPage />} />
-            <Route path="/portal" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/create" element={<WizardPage />} />
+
+            {/* Protected Routes for Authenticated Users */}
+            <Route path="/portal" element={<ProtectedRoute><LandingPage /></ProtectedRoute>} />
+            <Route path="/create" element={<ProtectedRoute><WizardPage /></ProtectedRoute>} />
             
             {/* Individual Sub-Routes for each view */}
-            <Route path="/batch/:batchId" element={<BatchWorkspaceLayout tab="routine" />} />
-            <Route path="/batch/:batchId/quota" element={<BatchWorkspaceLayout tab="quota" />} />
-            <Route path="/batch/:batchId/labs" element={<BatchWorkspaceLayout tab="labs" />} />
-            <Route path="/batch/:batchId/faculty" element={<BatchWorkspaceLayout tab="faculty" />} />
-            <Route path="/batch/:batchId/lifecycle" element={<BatchWorkspaceLayout tab="lifecycle" />} />
-            <Route path="/batch/:batchId/print" element={<BatchWorkspaceLayout tab="print" />} />
+            <Route path="/batch/:batchId" element={<ProtectedRoute><BatchWorkspaceLayout tab="routine" /></ProtectedRoute>} />
+            <Route path="/batch/:batchId/quota" element={<ProtectedRoute><BatchWorkspaceLayout tab="quota" /></ProtectedRoute>} />
+            <Route path="/batch/:batchId/labs" element={<ProtectedRoute><BatchWorkspaceLayout tab="labs" /></ProtectedRoute>} />
+            <Route path="/batch/:batchId/faculty" element={<ProtectedRoute><BatchWorkspaceLayout tab="faculty" /></ProtectedRoute>} />
+            <Route path="/batch/:batchId/lifecycle" element={<ProtectedRoute><BatchWorkspaceLayout tab="lifecycle" /></ProtectedRoute>} />
+            <Route path="/batch/:batchId/print" element={<ProtectedRoute><BatchWorkspaceLayout tab="print" /></ProtectedRoute>} />
 
             {/* Catch-all fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />

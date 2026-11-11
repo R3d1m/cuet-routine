@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useRoutine } from '../context/RoutineContext';
 import { useAuth } from '../context/AuthContext';
 import { AdminDashboard } from './AdminDashboard';
-import { PlusCircle, Calendar, ArrowRight, BookOpen, Layers, ShieldCheck, Clock, Archive, Lock, ExternalLink, User } from 'lucide-react';
+import { PlusCircle, Calendar, ArrowRight, BookOpen, Layers, Clock, Archive, Lock, ExternalLink, User } from 'lucide-react';
 
 interface LandingPortalProps {
   onOpenExisting: (batchId: string) => void;

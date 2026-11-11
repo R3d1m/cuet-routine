@@ -2,6 +2,22 @@ import { Teacher, Room, Batch, RoutineSlot, FacultyPreference, User } from '../t
 
 const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
+function getAuthHeaders(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem('cuet_routine_auth_user_session');
+    if (raw) {
+      const u = JSON.parse(raw);
+      const h: Record<string, string> = {};
+      if (u.role) h['x-user-role'] = u.role;
+      if (u.assignedBatchId) h['x-user-batch'] = u.assignedBatchId;
+      return h;
+    }
+  } catch (e) {
+    // Ignore storage parse error
+  }
+  return {};
+}
+
 export const api = {
   // Teachers
   async getTeachers(): Promise<Teacher[]> {
@@ -274,7 +290,8 @@ export const api = {
         preferredDays: p.preferred_days,
         preferredTimeOfDay: p.preferred_time_of_day,
         maxClassesPerDay: p.max_classes_per_day,
-        notes: p.notes
+        notes: p.notes,
+        availabilitySlots: p.availability_slots || []
       }));
     } catch (e) {
       console.warn(`API getFacultyPreferences failed for ${batchId}:`, e);
@@ -283,9 +300,13 @@ export const api = {
   },
 
   async saveFacultyPreference(batchId: string, pref: FacultyPreference): Promise<{ success: boolean }> {
+    const authHeaders = getAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/faculty-preferences/${batchId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...authHeaders
+      },
       body: JSON.stringify({
         id: pref.id,
         batch_id: batchId,
@@ -293,8 +314,17 @@ export const api = {
         preferred_days: pref.preferredDays,
         preferred_time_of_day: pref.preferredTimeOfDay,
         max_classes_per_day: pref.maxClassesPerDay || 2,
-        notes: pref.notes || ''
+        notes: pref.notes || '',
+        availability_slots: pref.availabilitySlots || []
       })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  },
+
+  async clearAllRoutines(): Promise<{ success: boolean; deleted_count: number }> {
+    const res = await fetch(`${API_BASE_URL}/routines/clear`, {
+      method: 'POST'
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();

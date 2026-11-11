@@ -81,6 +81,7 @@ class FacultyPreferenceModel(Base):
     preferred_time_of_day = Column(String, default="any") # 'morning', 'midday', 'afternoon', 'any'
     max_classes_per_day = Column(Integer, default=2)
     notes = Column(String, nullable=True)
+    availability_slots_json = Column(Text, default='[]') # JSON list of slot strings (e.g. ["SUN-1", "TUE-3"])
 
 class UserModel(Base):
     __tablename__ = "users"
