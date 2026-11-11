@@ -5,7 +5,6 @@ import {
   Day, 
   Period, 
   Section, 
-  SubGroup, 
   RoutineSlot, 
   CourseAssignmentConfig, 
   Batch, 
@@ -177,14 +176,20 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
   const handleGenerateRoutine = () => {
     const newSlots: RoutineSlot[] = [];
     const days: Day[] = ['SUN', 'MON', 'TUE', 'WED', 'THU'];
+
+    // Standard 3-period continuous lab blocks
     const labBlocks: { start: Period; span: number; name: string }[] = [
-      { start: 1, span: 3, name: 'Morning' },
-      { start: 4, span: 3, name: 'Mid-day' },
-      { start: 7, span: 3, name: 'Afternoon' },
+      { start: 1, span: 3, name: 'Morning' },   // Periods 1, 2, 3
+      { start: 4, span: 3, name: 'Mid-day' },   // Periods 4, 5, 6
+      { start: 7, span: 3, name: 'Afternoon' }, // Periods 7, 8, 9
     ];
+
+    // Standard lecture periods ordered by typical scheduling preference
+    const theoryPeriods: Period[] = [2, 3, 4, 5, 1, 6, 7, 8];
 
     // Helper: is a room busy in global slots or in current batch slots?
     const isRoomOccupied = (roomId: string, day: Day, start: Period, span: number): boolean => {
+      if (!roomId) return false;
       const periods = Array.from({ length: span }, (_, i) => start + i);
       const inGlobal = globalSlots.some(
         s => s.roomId === roomId && s.day === day && periods.some(p => p >= s.periodStart && p < s.periodStart + s.periodSpan)
@@ -197,6 +202,7 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
 
     // Helper: is a teacher busy in global slots or in current batch slots?
     const isTeacherOccupied = (teacherId: string, day: Day, start: Period, span: number): boolean => {
+      if (!teacherId) return false;
       const periods = Array.from({ length: span }, (_, i) => start + i);
       const inGlobal = globalSlots.some(
         s => s.teacherIds.includes(teacherId) && s.day === day && periods.some(p => p >= s.periodStart && p < s.periodStart + s.periodSpan)
@@ -207,25 +213,39 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
       return inGlobal || inCurrent;
     };
 
+    // Helper: is the section busy at the given time?
+    const isSectionBusy = (sec: Section, day: Day, start: Period, span: number): boolean => {
+      const periods = Array.from({ length: span }, (_, i) => start + i);
+      return newSlots.some(
+        s => s.batchId === batchId && s.section === sec && s.day === day &&
+          periods.some(p => p >= s.periodStart && p < s.periodStart + s.periodSpan)
+      );
+    };
+
     // Helper: find the best available lab
     const pickLabRoom = (req: string, day: Day, start: Period): string => {
       if (req === 'any_cse_lab') {
-        // Find the first free CSE lab
         for (const labId of generalCseLabs) {
           if (!isRoomOccupied(labId, day, start, 3)) {
             return labId;
           }
         }
-        return generalCseLabs[0]; // fallback
+        return generalCseLabs[0];
       }
-      return req;
+      return req || generalCseLabs[0];
     };
 
-    // 1. ALLOCATE SESSIONAL LABS FIRST (3-Period Continuous Blocks)
+    // =========================================================================
+    // 1. ALLOCATE SESSIONAL LABS FIRST:
+    //    RULE: EXACTLY ONE LAB OF EACH COURSE PER SECTION (3-Period Continuous Block)
+    // =========================================================================
     const sessionalCourses = courses.filter(c => c.type === 'sessional');
     const sections: Section[] = ['A', 'B'];
 
-    sections.forEach(sec => {
+    sections.forEach((sec, secIdx) => {
+      // Keep track of which days already have a lab for this section to distribute evenly
+      const daysWithLab = new Set<Day>();
+
       sessionalCourses.forEach((c, cIdx) => {
         const config = courseConfigs[c.code] || {
           courseCode: c.code,
@@ -235,66 +255,118 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
           preferredTimeOfDay: 'any'
         };
 
-        const targetSubGroups: SubGroup[] = sec === 'A' ? ['A1', 'A2'] : ['B1', 'B2'];
+        let placed = false;
 
-        targetSubGroups.forEach((sub, subIdx) => {
-          let placed = false;
+        // Rotate starting day between Section A and Section B
+        const startDayIdx = (cIdx + secIdx * 2) % 5;
+        const prioritizedDays: Day[] = [];
+        for (let i = 0; i < 5; i++) {
+          prioritizedDays.push(days[(startDayIdx + i) % 5]);
+        }
 
-          // Loop through days and blocks to find a free slot
-          for (let dOffset = 0; dOffset < 5 && !placed; dOffset++) {
-            const day = days[(cIdx * 2 + subIdx + dOffset) % 5];
-            
-            for (const block of labBlocks) {
-              // Check if any assigned teacher is busy
-              const teacherClash = config.teacherIds.some(tid => isTeacherOccupied(tid, day, block.start, 3));
-              const selectedRoomId = pickLabRoom(config.labRoomRequirement, day, block.start);
-              const roomClash = isRoomOccupied(selectedRoomId, day, block.start, 3);
+        // Alternating preferred blocks (Sec A prefers Mid-day/Morning; Sec B prefers Morning/Afternoon)
+        const candidateBlocks = sec === 'A'
+          ? [labBlocks[1], labBlocks[0], labBlocks[2]] // Mid-day (P4-6), Morning (P1-3), Afternoon (P7-9)
+          : [labBlocks[0], labBlocks[2], labBlocks[1]]; // Morning (P1-3), Afternoon (P7-9), Mid-day (P4-6)
 
-              if (!teacherClash && !roomClash) {
-                newSlots.push({
-                  id: `gen-${sec}-${c.code}-${sub}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-                  batchId,
-                  section: sec,
-                  subGroup: sub,
-                  day,
-                  periodStart: block.start,
-                  periodSpan: 3,
-                  courseCode: c.code,
-                  teacherIds: config.teacherIds,
-                  roomId: selectedRoomId
-                });
-                placed = true;
-                break;
-              }
-            }
+        // Pass 1: Try days that do not have a lab yet for this section
+        for (const day of prioritizedDays) {
+          if (placed) break;
+          if (daysWithLab.has(day) && daysWithLab.size < 5 && sessionalCourses.length <= 5) {
+            continue;
           }
 
-          // Fallback if fully crowded: place anyway with conflict flag
-          if (!placed) {
-            const fallbackDay = days[(cIdx + subIdx) % 5];
-            const fallbackBlock = labBlocks[subIdx % 3];
+          for (const block of candidateBlocks) {
+            if (isSectionBusy(sec, day, block.start, 3)) continue;
+
+            const selectedRoomId = pickLabRoom(config.labRoomRequirement, day, block.start);
+            if (isRoomOccupied(selectedRoomId, day, block.start, 3)) continue;
+
+            const teacherClash = config.teacherIds.length > 0 &&
+              config.teacherIds.some(tid => isTeacherOccupied(tid, day, block.start, 3));
+            if (teacherClash) continue;
+
+            // Place single lab for this section
             newSlots.push({
-              id: `gen-fb-${sec}-${c.code}-${sub}-${Date.now()}`,
+              id: `gen-lab-${sec}-${c.code}-${day}-P${block.start}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
               batchId,
               section: sec,
-              subGroup: sub,
-              day: fallbackDay,
-              periodStart: fallbackBlock.start,
+              subGroup: 'ALL',
+              day,
+              periodStart: block.start,
               periodSpan: 3,
               courseCode: c.code,
               teacherIds: config.teacherIds,
-              roomId: pickLabRoom(config.labRoomRequirement, fallbackDay, fallbackBlock.start)
+              roomId: selectedRoomId
             });
+            daysWithLab.add(day);
+            placed = true;
+            break;
           }
-        });
+        }
+
+        // Pass 2: If not placed, relax single-lab-per-day restriction
+        if (!placed) {
+          for (const day of days) {
+            if (placed) break;
+            for (const block of labBlocks) {
+              if (isSectionBusy(sec, day, block.start, 3)) continue;
+
+              const selectedRoomId = pickLabRoom(config.labRoomRequirement, day, block.start);
+              if (isRoomOccupied(selectedRoomId, day, block.start, 3)) continue;
+
+              const teacherClash = config.teacherIds.length > 0 &&
+                config.teacherIds.some(tid => isTeacherOccupied(tid, day, block.start, 3));
+              if (teacherClash) continue;
+
+              newSlots.push({
+                id: `gen-lab-${sec}-${c.code}-${day}-P${block.start}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+                batchId,
+                section: sec,
+                subGroup: 'ALL',
+                day,
+                periodStart: block.start,
+                periodSpan: 3,
+                courseCode: c.code,
+                teacherIds: config.teacherIds,
+                roomId: selectedRoomId
+              });
+              daysWithLab.add(day);
+              placed = true;
+              break;
+            }
+          }
+        }
+
+        // Fallback Pass: Place on a free section block so exactly one lab is guaranteed
+        if (!placed) {
+          const fallbackDay = days[(cIdx + secIdx * 2) % 5];
+          const fallbackBlock = labBlocks[(secIdx + cIdx) % 3];
+          newSlots.push({
+            id: `gen-lab-fb-${sec}-${c.code}-${fallbackDay}-P${fallbackBlock.start}-${Date.now()}`,
+            batchId,
+            section: sec,
+            subGroup: 'ALL',
+            day: fallbackDay,
+            periodStart: fallbackBlock.start,
+            periodSpan: 3,
+            courseCode: c.code,
+            teacherIds: config.teacherIds,
+            roomId: pickLabRoom(config.labRoomRequirement, fallbackDay, fallbackBlock.start)
+          });
+          daysWithLab.add(fallbackDay);
+        }
       });
     });
 
-    // 2. ALLOCATE THEORY COURSES (Credit-to-Class Rule: 3.0 cr = 3 classes on 3 distinct days)
+    // =========================================================================
+    // 2. ALLOCATE THEORY COURSES:
+    //    RULE: 3 CLASSES FOR 3 CREDITS, 2 CLASSES FOR 2 CREDITS PER SECTION
+    //    (EACH CLASS ON A DISTINCT DAY)
+    // =========================================================================
     const theoryCourses = courses.filter(c => c.type === 'theory');
-    const theoryPeriods: Period[] = [2, 3, 4, 5, 6];
 
-    sections.forEach(sec => {
+    sections.forEach((sec, secIdx) => {
       const defaultRoom = sec === 'A' ? roomA : roomB;
 
       theoryCourses.forEach((c, cIdx) => {
@@ -306,32 +378,69 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
           preferredTimeOfDay: 'any'
         };
 
-        const classesNeeded = Math.round(c.credit);
+        // Determine classes needed per section:
+        // 3 credits -> 3 classes; 2 credits -> 2 classes; 4 credits -> 4 classes
+        const creditVal = Math.round(c.credit);
+        const classesNeeded = creditVal === 2 ? 2 : (creditVal === 4 ? 4 : 3);
         let classesPlaced = 0;
 
-        for (let dIdx = 0; dIdx < 5 && classesPlaced < classesNeeded; dIdx++) {
-          const day = days[(cIdx + dIdx) % 5];
+        // Keep track of days assigned to this course for this section (1 class per day rule)
+        const assignedDays = new Set<Day>();
 
-          // Check if this course already has a class on this day for this section
-          const alreadyOnDay = newSlots.some(s => s.batchId === batchId && s.section === sec && s.courseCode === c.code && s.day === day);
-          if (alreadyOnDay) continue;
+        // Rotate starting day so different courses are distributed across the week
+        const startDayIdx = (cIdx * 2 + secIdx) % 5;
+        const prioritizedDays: Day[] = [];
+        for (let i = 0; i < 5; i++) {
+          prioritizedDays.push(days[(startDayIdx + i) % 5]);
+        }
+
+        // Pass 1: Ideal placement (distinct days, preferred theory periods, strict conflict checks)
+        for (const day of prioritizedDays) {
+          if (classesPlaced >= classesNeeded) break;
+          if (assignedDays.has(day)) continue;
 
           for (const period of theoryPeriods) {
-            // Check if section is free at this period
-            const sectionBusy = newSlots.some(
-              s => s.batchId === batchId && s.section === sec && s.day === day && period >= s.periodStart && period < s.periodStart + s.periodSpan
-            );
-            if (sectionBusy) continue;
+            if (isSectionBusy(sec, day, period, 1)) continue;
+            if (isRoomOccupied(defaultRoom, day, period, 1)) continue;
 
-            // Check if room is free
-            const roomClash = isRoomOccupied(defaultRoom, day, period, 1);
-            if (roomClash) continue;
+            const teacherClash = config.teacherIds.length > 0 &&
+              config.teacherIds.some(tid => isTeacherOccupied(tid, day, period, 1));
+            if (teacherClash) continue;
 
-            // Check teacher availability
-            const teacherClash = config.teacherIds.some(tid => isTeacherOccupied(tid, day, period, 1));
-            if (!teacherClash) {
+            newSlots.push({
+              id: `gen-th-${sec}-${c.code}-${day}-P${period}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+              batchId,
+              section: sec,
+              subGroup: 'ALL',
+              day,
+              periodStart: period,
+              periodSpan: 1,
+              courseCode: c.code,
+              teacherIds: config.teacherIds,
+              roomId: defaultRoom
+            });
+            assignedDays.add(day);
+            classesPlaced++;
+            break;
+          }
+        }
+
+        // Pass 2: If more classes are needed, try any remaining day where section & room are free
+        if (classesPlaced < classesNeeded) {
+          for (const day of days) {
+            if (classesPlaced >= classesNeeded) break;
+            if (assignedDays.has(day)) continue;
+
+            for (const period of [1, 2, 3, 4, 5, 6, 7, 8] as Period[]) {
+              if (isSectionBusy(sec, day, period, 1)) continue;
+              if (isRoomOccupied(defaultRoom, day, period, 1)) continue;
+
+              const teacherClash = config.teacherIds.length > 0 &&
+                config.teacherIds.some(tid => isTeacherOccupied(tid, day, period, 1));
+              if (teacherClash) continue;
+
               newSlots.push({
-                id: `gen-th-${sec}-${c.code}-${day}-${period}-${Date.now()}`,
+                id: `gen-th-${sec}-${c.code}-${day}-P${period}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
                 batchId,
                 section: sec,
                 subGroup: 'ALL',
@@ -342,6 +451,34 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
                 teacherIds: config.teacherIds,
                 roomId: defaultRoom
               });
+              assignedDays.add(day);
+              classesPlaced++;
+              break;
+            }
+          }
+        }
+
+        // Pass 3 (Guarantee Fallback): Ensure the exact credit quota (3 classes for 3 cr, 2 classes for 2 cr) is fulfilled
+        if (classesPlaced < classesNeeded) {
+          for (const day of days) {
+            if (classesPlaced >= classesNeeded) break;
+            for (const period of [2, 3, 4, 5, 1, 6, 7, 8] as Period[]) {
+              if (classesPlaced >= classesNeeded) break;
+              if (isSectionBusy(sec, day, period, 1)) continue;
+
+              newSlots.push({
+                id: `gen-th-fb-${sec}-${c.code}-${day}-P${period}-${Date.now()}`,
+                batchId,
+                section: sec,
+                subGroup: 'ALL',
+                day,
+                periodStart: period,
+                periodSpan: 1,
+                courseCode: c.code,
+                teacherIds: config.teacherIds,
+                roomId: defaultRoom
+              });
+              assignedDays.add(day);
               classesPlaced++;
               break;
             }

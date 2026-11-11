@@ -483,12 +483,18 @@ export const RoutineProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   };
 
-  // Course Quota Tracker: e.g. 3 credit = 3 classes per week
+  // Course Quota Tracker:
+  // Rule: 1 lab per section (Sec A + Sec B = 2 blocks);
+  //       3 credits = 3 classes per section (Sec A + Sec B = 6 classes);
+  //       2 credits = 2 classes per section (Sec A + Sec B = 4 classes)
   const courseQuota = useMemo(() => {
     const quotaMap: Record<string, { scheduled: number; required: number; isComplete: boolean }> = {};
     
     courses.forEach(c => {
-      const required = c.type === 'theory' ? c.credit : 2;
+      const isTheory = c.type === 'theory';
+      const creditVal = Math.round(c.credit);
+      const perSection = isTheory ? (creditVal === 2 ? 2 : (creditVal === 4 ? 4 : 3)) : 1;
+      const required = perSection * 2;
       const scheduledCount = activeBatchSlots.filter(s => s.courseCode === c.code || s.courseCode.startsWith(c.code)).length;
       quotaMap[c.code] = {
         scheduled: scheduledCount,

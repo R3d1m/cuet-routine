@@ -34,8 +34,8 @@ export const CourseQuotaTracker: React.FC<CourseQuotaTrackerProps> = ({ onQuickA
           </p>
         </div>
         <div className="text-right font-mono text-xs text-neutral-700">
-          <div><span className="font-bold">Theory Rule:</span> 1.0 Credit = 1 Class / Week</div>
-          <div><span className="font-bold">Sessional Rule:</span> 1.5 Credit = 3-Period Continuous Block</div>
+          <div><span className="font-bold">Theory Rule:</span> 3.0 Cr = 3 Classes/Sec • 2.0 Cr = 2 Classes/Sec</div>
+          <div><span className="font-bold">Sessional Rule:</span> 1 Lab Block / Section (Sec A + Sec B = 2 Blocks)</div>
         </div>
       </div>
 
@@ -95,7 +95,7 @@ export const CourseQuotaTracker: React.FC<CourseQuotaTrackerProps> = ({ onQuickA
                 <div className="mt-3 flex items-center justify-between border-t border-neutral-200 pt-2 text-xs">
                   <div className="font-mono">
                     <span className="font-bold text-black">{quota.scheduled}</span>
-                    <span className="text-neutral-500"> / {quota.required} classes/wk</span>
+                    <span className="text-neutral-500"> / {quota.required} classes/wk (Sec A+B)</span>
                   </div>
                   {onQuickAssign && isCoordinator && !activeBatch.isArchived && (
                     <button
