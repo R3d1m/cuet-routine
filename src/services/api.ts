@@ -138,6 +138,53 @@ export const api = {
     }
   },
 
+  async createBatch(batch: Batch): Promise<Batch> {
+    const res = await fetch(`${API_BASE_URL}/batches`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: batch.id,
+        level: batch.level,
+        term: batch.term,
+        academic_year: batch.academicYear,
+        coordinator_name: batch.coordinatorName,
+        default_room_a: batch.defaultRoomA || 'room-3301',
+        default_room_b: batch.defaultRoomB || 'room-3302',
+        commencement_date: batch.commencementDate || '2026-07-01',
+        mid_break_start: batch.midBreakStart || '2026-09-01',
+        mid_break_end: batch.midBreakEnd || '2026-09-15',
+        end_of_classes: batch.endOfClasses || '2026-11-01',
+        is_archived: batch.isArchived || false,
+        pl_dl_date: batch.plDlDate || null
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const b = await res.json();
+    return {
+      id: b.id,
+      level: b.level,
+      term: b.term,
+      academicYear: b.academic_year,
+      coordinatorName: b.coordinator_name,
+      defaultRoomA: b.default_room_a,
+      defaultRoomB: b.default_room_b,
+      commencementDate: b.commencement_date,
+      midBreakStart: b.mid_break_start,
+      midBreakEnd: b.mid_break_end,
+      endOfClasses: b.end_of_classes,
+      isArchived: b.is_archived,
+      plDlDate: b.pl_dl_date,
+      examMode: {
+        isEnabled: b.is_archived,
+        examDay: 'THU',
+        time: '1:00 PM - 4:00 PM',
+        startWeek: 15,
+        endWeek: 18,
+        lockedClassrooms: [b.default_room_a, b.default_room_b]
+      }
+    };
+  },
+
   // Start PL / DL (Permanent Archival Lock)
   async startPlDl(batchId: string, plDlDate: string): Promise<{ success: boolean; message: string }> {
     const res = await fetch(`${API_BASE_URL}/batches/${batchId}/start-pl-dl`, {

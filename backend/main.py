@@ -417,6 +417,22 @@ def save_faculty_preference(
             detail="Access Denied: Only course coordinators and administrators can modify faculty availability preferences."
         )
 
+    # Verify that the parent batch exists before inserting/updating preference
+    batch = db.query(BatchModel).filter(BatchModel.id == batch_id).first()
+    if not batch:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Batch '{batch_id}' does not exist."
+        )
+
+    # Verify that the teacher exists
+    teacher = db.query(TeacherModel).filter(TeacherModel.id == pref.teacher_id).first()
+    if not teacher:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Teacher '{pref.teacher_id}' does not exist."
+        )
+
     existing = db.query(FacultyPreferenceModel).filter(
         FacultyPreferenceModel.batch_id == batch_id,
         FacultyPreferenceModel.teacher_id == pref.teacher_id

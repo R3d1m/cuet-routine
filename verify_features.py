@@ -148,7 +148,37 @@ def run_verification():
     assert routine_denied is True, "Coordinator for 2022 must be blocked with 403 Forbidden when creating routine slot for Batch 2025"
     print("    - Strict routine slot isolation verified: Coordinator for 2022 blocked with 403 when modifying 2025 routine slots.")
 
-    # 7. Admin Authentication Check
+    # 7. Foreign Key Validation Check (Missing Batch / Missing Teacher)
+    print("\n[PASS] Referential Integrity & 404 Validation Check:")
+    batch_404 = False
+    try:
+        save_faculty_preference(
+            batch_id="9999",
+            pref=FacultyPreferenceSchema(batch_id="9999", teacher_id="t-mik"),
+            db=db,
+            x_user_role="coordinator"
+        )
+    except HTTPException as e:
+        if e.status_code == 404:
+            batch_404 = True
+    assert batch_404 is True, "Must return 404 when batch does not exist"
+    print("    - Non-existent batch correctly rejected with 404 Not Found.")
+
+    teacher_404 = False
+    try:
+        save_faculty_preference(
+            batch_id="2026",
+            pref=FacultyPreferenceSchema(batch_id="2026", teacher_id="t-nonexistent"),
+            db=db,
+            x_user_role="coordinator"
+        )
+    except HTTPException as e:
+        if e.status_code == 404:
+            teacher_404 = True
+    assert teacher_404 is True, "Must return 404 when teacher does not exist"
+    print("    - Non-existent teacher correctly rejected with 404 Not Found.")
+
+    # 8. Admin Authentication Check
     print("\n[PASS] Admin Authentication Check:")
     admin_user = login(req=LoginRequest(username="admin", password="admin123"), db=db)
     assert admin_user.role == "admin"

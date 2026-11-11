@@ -2,6 +2,27 @@ import { Batch, RoutineSlot } from '../types';
 
 export const INITIAL_BATCHES: Batch[] = [
   {
+    id: '2026',
+    level: 1,
+    term: 'Term-I',
+    academicYear: '2025-2026',
+    coordinatorName: 'Dr. Pranab Kumar Dhar',
+    defaultRoomA: 'room-3301',
+    defaultRoomB: 'room-3302',
+    commencementDate: '2026-07-01',
+    midBreakStart: '2026-09-01',
+    midBreakEnd: '2026-09-15',
+    endOfClasses: '2026-11-01',
+    examMode: {
+      isEnabled: false,
+      examDay: 'THU',
+      time: '1:00 PM - 4:00 PM',
+      startWeek: 14,
+      endWeek: 18,
+      lockedClassrooms: ['room-3301', 'room-3302']
+    }
+  },
+  {
     id: '2025',
     level: 1,
     term: 'Term-I',

@@ -33,6 +33,7 @@ interface RoutineContextType {
   activeBatchSlots: RoutineSlot[];
   addOrUpdateSlot: (slot: RoutineSlot) => Promise<void>;
   deleteSlot: (slotId: string) => Promise<void>;
+  createOrUpdateBatch: (batch: Batch) => Promise<void>;
   updateBatchLifecycle: (batchId: string, updates: Partial<Batch>, freeUpClassesForExam?: boolean) => void;
   advanceBatchSemester: (batchId: string) => Promise<{ nextLevel: number; nextTerm: string; degreeCompleted: boolean }>;
   reopenBatchSemester: (batchId: string) => Promise<void>;
@@ -228,6 +229,33 @@ export const RoutineProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await api.deleteRoutineSlot(slotId);
     } catch (e) {
       console.warn('Backend slot delete note:', e);
+    }
+  };
+
+  const createOrUpdateBatch = async (batch: Batch): Promise<void> => {
+    try {
+      const saved = await api.createBatch(batch);
+      setBatches(prev => {
+        const idx = prev.findIndex(b => b.id === batch.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], ...saved };
+          return updated;
+        }
+        return [...prev, saved];
+      });
+    } catch (e) {
+      console.warn('Backend batch create note:', e);
+      // Fallback local update
+      setBatches(prev => {
+        const idx = prev.findIndex(b => b.id === batch.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], ...batch };
+          return updated;
+        }
+        return [...prev, batch];
+      });
     }
   };
 
@@ -489,6 +517,7 @@ export const RoutineProvider: React.FC<{ children: React.ReactNode }> = ({ child
         activeBatchSlots,
         addOrUpdateSlot,
         deleteSlot,
+        createOrUpdateBatch,
         updateBatchLifecycle,
         advanceBatchSemester,
         reopenBatchSemester,

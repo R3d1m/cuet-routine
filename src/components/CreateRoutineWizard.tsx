@@ -37,6 +37,7 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
     slots: globalSlots, 
     addOrUpdateSlot, 
     batches,
+    createOrUpdateBatch,
     updateBatchLifecycle, 
     checkConflicts 
   } = useRoutine();
@@ -593,7 +594,35 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={async () => {
+                const existing = batches.find(b => b.id === batchId);
+                if (!existing) {
+                  const draftBatch: Batch = {
+                    id: batchId,
+                    level,
+                    term,
+                    academicYear,
+                    coordinatorName,
+                    defaultRoomA: roomA || 'room-3301',
+                    defaultRoomB: roomB || 'room-3302',
+                    commencementDate: '2026-07-01',
+                    midBreakStart: '2026-09-01',
+                    midBreakEnd: '2026-09-15',
+                    endOfClasses: '2026-11-01',
+                    isArchived: false,
+                    examMode: {
+                      isEnabled: false,
+                      examDay: 'THU',
+                      time: '1:00 PM - 4:00 PM',
+                      startWeek: 14,
+                      endWeek: 18,
+                      lockedClassrooms: [roomA, roomB].filter(Boolean)
+                    }
+                  };
+                  await createOrUpdateBatch(draftBatch);
+                }
+                setStep(2);
+              }}
               className="px-6 py-2 text-xs font-bold bg-black text-white hover:bg-neutral-800 flex items-center gap-2"
             >
               <span>Continue to Course & Faculty Setup</span>
