@@ -445,7 +445,7 @@ export const FacultyPreferenceManager: React.FC = () => {
       </div>
 
       {/* Table below Faculty Assignment for Faculty Availability Preference List */}
-      <FacultyAvailabilityTable batchId={activeBatch.id} />
+      <FacultyAvailabilityTable batchId={activeBatch.id} assignedTeacherIds={batchFacultyList.map(t => t.id)} />
     </div>
   );
 };

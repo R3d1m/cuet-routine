@@ -8,7 +8,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 from fastapi import HTTPException
 from backend.main import (
     app, list_rooms, get_faculty_preferences, save_faculty_preference,
-    login, list_batches, list_teachers
+    login, list_batches, list_teachers, get_all_routine_slots
 )
 from backend.schemas import FacultyPreferenceSchema, LoginRequest
 from backend.database import SessionLocal
@@ -60,6 +60,10 @@ def run_verification():
     print(f"\n[PASS] Routine Slots Cleanup Check:")
     print(f"    - Current routine slots in DB: {slot_count}")
     assert slot_count == 0, f"Routine slots should be 0, but found {slot_count}"
+
+    # 4. API Endpoint: All Current Routines
+    all_slots = get_all_routine_slots(db=db)
+    print(f'\n[PASS] get_all_routine_slots() returned {len(all_slots)} active routine slots across department.')
 
     # 4. API Endpoint: Rooms List
     rooms_api = list_rooms(db=db)

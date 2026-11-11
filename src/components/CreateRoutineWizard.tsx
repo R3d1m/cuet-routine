@@ -133,6 +133,26 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
     setCourseConfigs(initialConfigs);
   }, [courses]);
 
+  // Extract all teachers assigned across courses in Step 2 for automatic availability table sync:
+  const assignedCourseTeacherIds = useMemo(() => {
+    const ids = new Set<string>();
+    Object.values(courseConfigs).forEach(cfg => {
+      (cfg.teacherIds || []).forEach(tid => ids.add(tid));
+    });
+    return Array.from(ids);
+  }, [courseConfigs]);
+
+  const teacherCourseMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    Object.entries(courseConfigs).forEach(([code, cfg]) => {
+      (cfg.teacherIds || []).forEach(tid => {
+        if (!map[tid]) map[tid] = [];
+        map[tid].push(code);
+      });
+    });
+    return map;
+  }, [courseConfigs]);
+
   // Step 3: Generated Slots
   const [generatedSlots, setGeneratedSlots] = useState<RoutineSlot[]>([]);
   const [activeCanvasSection, setActiveCanvasSection] = useState<Section>('A');
@@ -705,7 +725,12 @@ export const CreateRoutineWizard: React.FC<CreateRoutineWizardProps> = ({
           </div>
 
           {/* Table below Faculty Assignment for Faculty Availability Preference List */}
-          <FacultyAvailabilityTable isEmbeddedInWizard={true} />
+          <FacultyAvailabilityTable 
+            batchId={batchId}
+            isEmbeddedInWizard={true}
+            assignedTeacherIds={assignedCourseTeacherIds}
+            teacherCourseMap={teacherCourseMap}
+          />
 
           {/* Action Bar */}
           <div className="flex items-center justify-between p-4 border-2 border-black bg-white">

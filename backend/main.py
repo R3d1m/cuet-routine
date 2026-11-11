@@ -270,6 +270,27 @@ def clear_all_routines(db: Session = Depends(get_db)):
     db.commit()
     return {"success": True, "deleted_count": deleted}
 
+@app.get("/api/routines")
+def get_all_routine_slots(db: Session = Depends(get_db)):
+    slots = db.query(RoutineSlotModel).all()
+    results = []
+    for s in slots:
+        results.append({
+            "id": s.id,
+            "batch_id": s.batch_id,
+            "section": s.section,
+            "sub_group": s.sub_group,
+            "day": s.day,
+            "period_start": s.period_start,
+            "period_span": s.period_span,
+            "course_code": s.course_code,
+            "teacher_ids": json.loads(s.teacher_ids_json or "[]"),
+            "room_id": s.room_id,
+            "is_ct": s.is_ct,
+            "note": s.note
+        })
+    return results
+
 @app.get("/api/routines/{batch_id}")
 def get_routine_slots(batch_id: str, db: Session = Depends(get_db)):
     slots = db.query(RoutineSlotModel).filter(RoutineSlotModel.batch_id == batch_id).all()

@@ -205,6 +205,31 @@ export const api = {
   },
 
   // Routine Slots
+  async getAllRoutineSlots(): Promise<RoutineSlot[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/routines`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data.map((s: any) => ({
+        id: s.id,
+        batchId: s.batch_id,
+        section: s.section,
+        subGroup: s.sub_group,
+        day: s.day,
+        periodStart: s.period_start,
+        periodSpan: s.period_span,
+        courseCode: s.course_code,
+        teacherIds: s.teacher_ids || [],
+        roomId: s.room_id,
+        isCT: s.is_ct,
+        note: s.note
+      }));
+    } catch (e) {
+      console.warn('API getAllRoutineSlots failed, falling back to local slots:', e);
+      return [];
+    }
+  },
+
   async getRoutineSlots(batchId: string): Promise<RoutineSlot[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/routines/${batchId}`);

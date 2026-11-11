@@ -8,13 +8,28 @@ import {
   Check, 
   User, 
   Save, 
-  Info, 
-  Lock
+  Lock,
+  Plus,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 
 interface FacultyAvailabilityTableProps {
   batchId?: string;
   isEmbeddedInWizard?: boolean;
+  assignedTeacherIds?: string[];
+  teacherCourseMap?: Record<string, string[]>;
+}
+
+interface RoutineCommitment {
+  slotId: string;
+  batchId: string;
+  courseCode: string;
+  day: Day;
+  period: number;
+  roomId: string;
+  roomName: string;
+  section: string;
 }
 
 const DAYS: Day[] = ['SUN', 'MON', 'TUE', 'WED', 'THU'];
@@ -33,9 +48,12 @@ const PERIOD_LABELS: Record<number, string> = {
 };
 
 export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> = ({ 
-  batchId
+  batchId,
+  isEmbeddedInWizard = false,
+  assignedTeacherIds = [],
+  teacherCourseMap = {}
 }) => {
-  const { activeBatch, batches, teachers } = useRoutine();
+  const { activeBatch, batches, teachers, rooms, slots, activeBatchSlots } = useRoutine();
   const { canEditBatch } = useAuth();
 
   const currentBatchId = batchId || activeBatch?.id || '2022';
@@ -48,6 +66,17 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
   const [preferenceNotes, setPreferenceNotes] = useState<string>('');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Locally added teachers via table controls
+  const [manuallyAddedTeacherIds, setManuallyAddedTeacherIds] = useState<string[]>([]);
+  const [newTeacherInputId, setNewTeacherInputId] = useState<string>('');
+
+  // Map of roomId -> shortName for display
+  const roomNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    rooms.forEach(r => map.set(r.id, r.shortName || r.name));
+    return map;
+  }, [rooms]);
 
   // Load faculty preferences from API
   const loadPreferences = async () => {
@@ -67,7 +96,94 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
     loadPreferences();
   }, [currentBatchId]);
 
-  // When teacher selection changes, load their current availability slots
+  // 1. EXTRACT ALL CURRENT ROUTINE COMMITMENTS FOR ALL TEACHERS ACROSS ALL BATCHES
+  const teacherRoutineCommitmentsMap = useMemo(() => {
+    const map = new Map<string, Map<string, RoutineCommitment>>();
+
+    slots.forEach(slot => {
+      slot.teacherIds.forEach(tid => {
+        if (!map.has(tid)) {
+          map.set(tid, new Map<string, RoutineCommitment>());
+        }
+        const teacherMap = map.get(tid)!;
+
+        // Expand across periodSpan (e.g. 3-period lab block occupies periodStart, +1, +2)
+        const span = slot.periodSpan || 1;
+        for (let offset = 0; offset < span; offset++) {
+          const p = slot.periodStart + offset;
+          const slotKey = `${slot.day}-${p}`;
+          teacherMap.set(slotKey, {
+            slotId: slot.id,
+            batchId: slot.batchId,
+            courseCode: slot.courseCode,
+            day: slot.day,
+            period: p,
+            roomId: slot.roomId,
+            roomName: roomNameMap.get(slot.roomId) || slot.roomId,
+            section: slot.section
+          });
+        }
+      });
+    });
+
+    return map;
+  }, [slots, roomNameMap]);
+
+  // 2. AUTOMATIC COURSE TEACHER LIST AGGREGATION:
+  // - Teachers assigned in wizard step 2 (`assignedTeacherIds`)
+  // - Teachers in current routine slots for this batch (`activeBatchSlots`)
+  // - Teachers manually added via "+ Add Course Teacher"
+  // - Teachers with existing saved preferences for this batch
+  const courseTeachers = useMemo(() => {
+    const teacherIdSet = new Set<string>();
+
+    // From wizard course assignments
+    assignedTeacherIds.forEach(id => teacherIdSet.add(id));
+
+    // From current routine slots for this batch
+    activeBatchSlots.forEach(s => {
+      s.teacherIds.forEach(id => teacherIdSet.add(id));
+    });
+
+    // From manually added teachers in this component
+    manuallyAddedTeacherIds.forEach(id => teacherIdSet.add(id));
+
+    // From existing preferences for this batch
+    Object.keys(preferences).forEach(id => teacherIdSet.add(id));
+
+    // If still empty (e.g. fresh batch setup), show initial department teachers as options
+    if (teacherIdSet.size === 0 && !isEmbeddedInWizard) {
+      teachers.slice(0, 5).forEach(t => teacherIdSet.add(t.id));
+    }
+
+    return teachers.filter(t => teacherIdSet.has(t.id)).sort((a, b) => a.rank - b.rank);
+  }, [assignedTeacherIds, activeBatchSlots, manuallyAddedTeacherIds, preferences, teachers, isEmbeddedInWizard]);
+
+  // Auto-select the first teacher if none is currently selected
+  useEffect(() => {
+    if ((!selectedTeacherId || !courseTeachers.some(t => t.id === selectedTeacherId)) && courseTeachers.length > 0) {
+      setSelectedTeacherId(courseTeachers[0].id);
+    }
+  }, [courseTeachers, selectedTeacherId]);
+
+  // Compute available slots: all 45 slots minus slots where teacher has class in current routines
+  const getFreeSlotsFromCurrentRoutines = (teacherId: string): string[] => {
+    const commitments = teacherRoutineCommitmentsMap.get(teacherId) || new Map();
+    const freeSlots: string[] = [];
+    DAYS.forEach(day => {
+      PERIODS.forEach(p => {
+        const key = `${day}-${p}`;
+        if (!commitments.has(key)) {
+          freeSlots.push(key);
+        }
+      });
+    });
+    return freeSlots;
+  };
+
+  // When teacher selection changes, load their availability slots:
+  // - If saved preference exists: use saved availabilitySlots
+  // - Otherwise: automatically fetch free slots from current routines!
   useEffect(() => {
     if (!selectedTeacherId) {
       setSelectedSlots([]);
@@ -80,17 +196,19 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
       setSelectedSlots(existing.availabilitySlots);
       setPreferenceNotes(existing.notes || '');
     } else {
-      // Default: all slots available
-      const allSlots: string[] = [];
-      DAYS.forEach(day => {
-        PERIODS.forEach(p => {
-          allSlots.push(`${day}-${p}`);
-        });
-      });
-      setSelectedSlots(allSlots);
+      // Auto-fetch free slots from current routines!
+      const routineFreeSlots = getFreeSlotsFromCurrentRoutines(selectedTeacherId);
+      setSelectedSlots(routineFreeSlots);
       setPreferenceNotes('');
     }
-  }, [selectedTeacherId, preferences]);
+  }, [selectedTeacherId, preferences, teacherRoutineCommitmentsMap]);
+
+  // Current commitments for the selected teacher
+  const currentTeacherCommitments = useMemo(() => {
+    return selectedTeacherId 
+      ? teacherRoutineCommitmentsMap.get(selectedTeacherId) || new Map<string, RoutineCommitment>()
+      : new Map<string, RoutineCommitment>();
+  }, [selectedTeacherId, teacherRoutineCommitmentsMap]);
 
   // Toggle a single slot
   const handleToggleSlot = (slotKey: string) => {
@@ -100,6 +218,37 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
         ? prev.filter(s => s !== slotKey)
         : [...prev, slotKey]
     );
+  };
+
+  // 1-Click: Sync with Current Routines
+  const handleSyncWithRoutines = (teacherIdToSync?: string) => {
+    const tid = teacherIdToSync || selectedTeacherId;
+    if (!tid) return;
+
+    const freeSlots = getFreeSlotsFromCurrentRoutines(tid);
+    if (!teacherIdToSync || teacherIdToSync === selectedTeacherId) {
+      setSelectedSlots(freeSlots);
+    }
+
+    // If saving directly for a teacher row
+    if (teacherIdToSync) {
+      const existing = preferences[tid];
+      const updatedPref: FacultyPreference = {
+        id: existing?.id,
+        batchId: currentBatchId,
+        teacherId: tid,
+        preferredDays: existing?.preferredDays || ['SUN', 'MON', 'TUE', 'WED', 'THU'],
+        preferredTimeOfDay: existing?.preferredTimeOfDay || 'any',
+        maxClassesPerDay: existing?.maxClassesPerDay || 2,
+        notes: existing?.notes || 'Synced from current routines',
+        availabilitySlots: freeSlots
+      };
+      api.saveFacultyPreference(currentBatchId, updatedPref).then(() => {
+        setPreferences(prev => ({ ...prev, [tid]: updatedPref }));
+        setSaveSuccessMsg(`Synced ${teachers.find(t => t.id === tid)?.name} with current routines!`);
+        setTimeout(() => setSaveSuccessMsg(null), 3000);
+      });
+    }
   };
 
   // Quick preset toggles
@@ -129,6 +278,16 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
     const aftSlots: string[] = [];
     DAYS.forEach(d => [7, 8, 9].forEach(p => aftSlots.push(`${d}-${p}`)));
     setSelectedSlots(aftSlots);
+  };
+
+  // Add course teacher via dropdown
+  const handleAddCourseTeacher = () => {
+    if (!newTeacherInputId) return;
+    if (!manuallyAddedTeacherIds.includes(newTeacherInputId)) {
+      setManuallyAddedTeacherIds(prev => [...prev, newTeacherInputId]);
+    }
+    setSelectedTeacherId(newTeacherInputId);
+    setNewTeacherInputId('');
   };
 
   // Save preference to backend
@@ -163,10 +322,8 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
     }
   };
 
-  // Teachers who have configured preferences
-  const teachersWithPrefs = useMemo(() => {
-    return Object.values(preferences).filter(p => p.availabilitySlots && p.availabilitySlots.length > 0);
-  }, [preferences]);
+  const selectedTeacher = teachers.find(t => t.id === selectedTeacherId);
+  const totalClassesInRoutines = currentTeacherCommitments.size;
 
   return (
     <div className="mt-8 border-2 border-black bg-white p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
@@ -178,13 +335,15 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
             <h3 className="text-base font-bold uppercase tracking-tight text-black">
               Faculty Availability Preference List
             </h3>
+            <span className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase bg-black text-white">
+              Current Routines Sync
+            </span>
             <span className="px-2 py-0.5 text-[9px] font-mono font-bold uppercase bg-neutral-200 border border-black text-black">
-              Advisory / Non-Binding
+              Non-Binding Guide
             </span>
           </div>
           <p className="text-xs text-neutral-600 font-mono">
-            Coordinators can record preferred available teaching slots for department faculty for Batch {currentBatchId}.
-            This schedule serves as a reference guideline and is <span className="font-bold underline">not a hard blocking constraint</span>.
+            Automatically tracks course teachers and fetches their live class commitments from current routines across all departmental batches.
           </p>
         </div>
 
@@ -196,63 +355,220 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
         )}
       </div>
 
-      {/* Advisory Info Card */}
-      <div className="p-3 mb-6 bg-neutral-50 border border-black text-xs font-mono flex items-start gap-2.5">
-        <Info className="w-4 h-4 text-black shrink-0 mt-0.5" />
-        <div className="text-neutral-700 leading-relaxed">
-          <strong>Coordinator Usage:</strong> Use this preference table to map out which periods a teacher is comfortable taking classes (e.g., avoiding early morning or late afternoon). Slots can still be manually assigned during timetable authoring if needed.
-        </div>
-      </div>
+      {/* Course Teachers Table (Automatically populated from course teacher assignment & current routines) */}
+      <div className="mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-black flex items-center gap-1.5">
+              <User className="w-4 h-4" />
+              <span>Assigned Course Teachers for this Batch ({courseTeachers.length})</span>
+            </h4>
+            <span className="text-[10px] font-mono text-neutral-500">
+              * Auto-added when assigned to courses
+            </span>
+          </div>
 
-      {/* Teacher Selection & Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        {/* Step 1: Select Teacher */}
-        <div className="md:col-span-1 space-y-3">
-          <label className="block text-xs font-bold uppercase tracking-wider text-black">
-            1. Select Faculty Member:
-          </label>
-          <select
-            value={selectedTeacherId}
-            onChange={e => setSelectedTeacherId(e.target.value)}
-            disabled={!isAuthorized}
-            className="w-full text-xs p-2.5 border-2 border-black bg-white font-mono font-bold focus:outline-none focus:ring-1 focus:ring-black"
-          >
-            <option value="">-- Choose a Teacher --</option>
-            {teachers.map(t => {
-              const hasPref = preferences[t.id]?.availabilitySlots && preferences[t.id].availabilitySlots!.length > 0;
-              return (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.initials}) - {t.designation} {hasPref ? '✓' : ''}
-                </option>
-              );
-            })}
-          </select>
-
-          {selectedTeacherId && (
-            <div className="p-3 border border-black bg-neutral-50 text-xs font-mono space-y-1">
-              {(() => {
-                const t = teachers.find(x => x.id === selectedTeacherId);
-                if (!t) return null;
-                return (
-                  <>
-                    <div className="font-bold text-black">{t.name}</div>
-                    <div className="text-[11px] text-neutral-600">{t.designation} • Dept. of {t.department}</div>
-                    <div className="text-[11px] font-bold text-black pt-1">
-                      Available Slots Selected: <span className="underline">{selectedSlots.length} of 45</span>
-                    </div>
-                  </>
-                );
-              })()}
+          {/* Add Course Teacher Input */}
+          {isAuthorized && (
+            <div className="flex items-center gap-2">
+              <select
+                value={newTeacherInputId}
+                onChange={e => setNewTeacherInputId(e.target.value)}
+                className="text-xs p-1.5 border border-black bg-white font-mono min-w-[200px]"
+              >
+                <option value="">+ Add Course Teacher to List...</option>
+                {teachers
+                  .filter(t => !courseTeachers.some(ct => ct.id === t.id))
+                  .map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.initials}) - {t.designation}
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddCourseTeacher}
+                disabled={!newTeacherInputId}
+                className="px-3 py-1.5 text-xs font-bold bg-black text-white hover:bg-neutral-800 disabled:opacity-40 border border-black uppercase tracking-wider flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
             </div>
           )}
+        </div>
 
-          {/* Quick Presets */}
-          {selectedTeacherId && isAuthorized && (
-            <div className="pt-2">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-600 mb-2">
-                Quick Selection Presets:
-              </label>
-              <div className="flex flex-wrap gap-1.5 text-[11px] font-mono">
+        {courseTeachers.length === 0 ? (
+          <div className="p-4 border-2 border-dashed border-neutral-300 text-center text-xs font-mono text-neutral-600 bg-neutral-50">
+            No course teachers assigned yet. Assign faculty to courses in the table above or select a teacher from the dropdown above to automatically add them here.
+          </div>
+        ) : (
+          <div className="border border-black overflow-x-auto shadow-sm">
+            <table className="w-full text-left border-collapse text-xs font-mono">
+              <thead>
+                <tr className="bg-neutral-100 border-b border-black text-[11px] uppercase">
+                  <th className="p-2.5 border-r border-black font-bold">Faculty Member</th>
+                  <th className="p-2.5 border-r border-black font-bold">Assigned Course(s)</th>
+                  <th className="p-2.5 border-r border-black font-bold">Current Routines Commitment</th>
+                  <th className="p-2.5 border-r border-black font-bold">Available Preference Slots</th>
+                  <th className="p-2.5 font-bold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black">
+                {courseTeachers.map(teacher => {
+                  const commitments = teacherRoutineCommitmentsMap.get(teacher.id) || new Map();
+                  const routineClassCount = commitments.size;
+                  const pref = preferences[teacher.id];
+                  const availableCount = pref?.availabilitySlots?.length ?? (45 - routineClassCount);
+                  const isSelected = selectedTeacherId === teacher.id;
+
+                  // Find courses assigned in wizard or active routine
+                  const assignedCodes = teacherCourseMap[teacher.id] || [];
+                  const activeRoutineCodes = Array.from(new Set(
+                    activeBatchSlots
+                      .filter(s => s.teacherIds.includes(teacher.id))
+                      .map(s => s.courseCode)
+                  ));
+                  const allAssignedCourses = Array.from(new Set([...assignedCodes, ...activeRoutineCodes]));
+
+                  // Batches in which this teacher has classes
+                  const activeBatchesInvolved = Array.from(new Set(
+                    Array.from(commitments.values()).map(c => `Batch ${c.batchId}`)
+                  ));
+
+                  return (
+                    <tr 
+                      key={teacher.id} 
+                      className={`transition-colors ${isSelected ? 'bg-neutral-100 font-medium' : 'hover:bg-neutral-50'}`}
+                    >
+                      {/* Teacher details */}
+                      <td className="p-2.5 border-r border-black">
+                        <div className="font-bold text-black text-sm">{teacher.name}</div>
+                        <div className="text-[10px] text-neutral-600 flex items-center gap-1.5 mt-0.5">
+                          <span className="font-bold px-1 bg-black text-white text-[9px]">{teacher.initials}</span>
+                          <span>{teacher.designation}</span>
+                          <span className="opacity-75">• Dept. of {teacher.department}</span>
+                        </div>
+                      </td>
+
+                      {/* Assigned Courses */}
+                      <td className="p-2.5 border-r border-black">
+                        {allAssignedCourses.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {allAssignedCourses.map(c => (
+                              <span key={c} className="px-1.5 py-0.5 bg-neutral-200 border border-black text-[10px] font-bold">
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-neutral-400 italic">Pool member</span>
+                        )}
+                      </td>
+
+                      {/* Current Routines Commitments */}
+                      <td className="p-2.5 border-r border-black">
+                        {routineClassCount > 0 ? (
+                          <div>
+                            <span className="px-1.5 py-0.5 bg-neutral-800 text-white text-[10px] font-bold inline-block mb-1">
+                              {routineClassCount} Classes in Current Routines
+                            </span>
+                            <div className="text-[10px] text-neutral-600">
+                              Active in: {activeBatchesInvolved.join(', ')}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-emerald-800 font-bold flex items-center gap-1">
+                            <Check className="w-3 h-3 text-emerald-700" />
+                            <span>100% Free (No classes in routines)</span>
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Available Preference Slots */}
+                      <td className="p-2.5 border-r border-black font-bold">
+                        <span className="px-2 py-0.5 bg-black text-white text-[10px]">
+                          {availableCount} / 45 Slots
+                        </span>
+                        {routineClassCount > 0 && (
+                          <span className="ml-1.5 text-[10px] text-neutral-500 font-normal">
+                            ({routineClassCount} occupied in routines)
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Action buttons */}
+                      <td className="p-2.5 text-right space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTeacherId(teacher.id)}
+                          className={`px-2.5 py-1 text-[10px] font-bold border border-black transition-colors ${
+                            isSelected 
+                              ? 'bg-black text-white' 
+                              : 'bg-white text-black hover:bg-neutral-100'
+                          }`}
+                        >
+                          {isSelected ? 'Editing Slots' : 'Configure Slots'}
+                        </button>
+
+                        {isAuthorized && (
+                          <button
+                            type="button"
+                            onClick={() => handleSyncWithRoutines(teacher.id)}
+                            title="Auto-fetch and save availability directly from current routine schedules"
+                            className="px-2 py-1 text-[10px] font-bold border border-black bg-neutral-100 hover:bg-black hover:text-white transition-colors inline-flex items-center gap-1"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Sync</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Selected Teacher Detailed Slots Matrix */}
+      {selectedTeacher && (
+        <div className="pt-6 border-t-2 border-black">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-black text-white text-xs font-mono font-bold">
+                  Active Configuration
+                </span>
+                <h4 className="text-sm font-bold uppercase text-black">
+                  Availability Grid: {selectedTeacher.name} ({selectedTeacher.initials})
+                </h4>
+              </div>
+              <p className="text-xs text-neutral-600 font-mono mt-0.5">
+                {selectedTeacher.designation} • {selectedSlots.length} available slots selected •{' '}
+                {totalClassesInRoutines > 0 ? (
+                  <span className="font-bold text-neutral-900 underline">
+                    {totalClassesInRoutines} class periods booked in current routines
+                  </span>
+                ) : (
+                  <span className="text-emerald-700 font-bold">No classes booked in current routines</span>
+                )}
+              </p>
+            </div>
+
+            {/* Quick Presets & Auto-Sync Controls */}
+            {isAuthorized && (
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+                <button
+                  type="button"
+                  onClick={() => handleSyncWithRoutines()}
+                  title="Auto-set available slots by excluding all periods occupied in current routines"
+                  className="px-2.5 py-1.5 bg-neutral-900 text-white font-bold border border-black hover:bg-neutral-800 transition-colors flex items-center gap-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Auto-Sync from Current Routines</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleSelectAll}
@@ -265,21 +581,21 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
                   onClick={handleSelectMorning}
                   className="px-2 py-1 bg-white border border-black hover:bg-black hover:text-white transition-colors"
                 >
-                  Morning (P1-P3)
+                  Morning (P1-3)
                 </button>
                 <button
                   type="button"
                   onClick={handleSelectMidDay}
                   className="px-2 py-1 bg-white border border-black hover:bg-black hover:text-white transition-colors"
                 >
-                  Mid-Day (P4-P6)
+                  Mid-Day (P4-6)
                 </button>
                 <button
                   type="button"
                   onClick={handleSelectAfternoon}
                   className="px-2 py-1 bg-white border border-black hover:bg-black hover:text-white transition-colors"
                 >
-                  Afternoon (P7-P9)
+                  Afternoon (P7-9)
                 </button>
                 <button
                   type="button"
@@ -289,181 +605,112 @@ export const FacultyAvailabilityTable: React.FC<FacultyAvailabilityTableProps> =
                   Clear All
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Notes Input */}
-          {selectedTeacherId && (
-            <div className="pt-2">
+          {/* Interactive Matrix with Live Routine Annotations */}
+          <div className="overflow-x-auto border-2 border-black mb-4">
+            <table className="w-full text-center border-collapse text-xs font-mono">
+              <thead>
+                <tr className="bg-black text-white text-[10px]">
+                  <th className="p-2 border-r border-neutral-700 w-16">Day</th>
+                  {PERIODS.map(p => (
+                    <th key={p} className="p-1.5 border-r border-neutral-700 min-w-[70px]">
+                      <div>Period {p}</div>
+                      <div className="text-[8px] font-normal opacity-75">{PERIOD_LABELS[p]}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {DAYS.map(day => (
+                  <tr key={day} className="border-b border-black">
+                    <td className="p-2 border-r border-black font-bold bg-neutral-100 text-black text-xs">
+                      {day}
+                    </td>
+                    {PERIODS.map(p => {
+                      const slotKey = `${day}-${p}`;
+                      const isAvailable = selectedSlots.includes(slotKey);
+                      const commitment = currentTeacherCommitments.get(slotKey);
+
+                      return (
+                        <td 
+                          key={p} 
+                          className="p-1 border-r border-black last:border-r-0 align-top"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSlot(slotKey)}
+                            disabled={!isAuthorized}
+                            className={`w-full min-h-[48px] p-1 text-[10px] font-bold border transition-all flex flex-col justify-between items-center ${
+                              commitment
+                                ? isAvailable
+                                  ? 'bg-neutral-800 text-white border-black ring-2 ring-amber-400'
+                                  : 'bg-neutral-900 text-neutral-300 border-black opacity-90'
+                                : isAvailable
+                                  ? 'bg-black text-white border-black hover:bg-neutral-800'
+                                  : 'bg-neutral-50 text-neutral-400 border-neutral-300 hover:bg-neutral-200 hover:text-black line-through'
+                            } ${!isAuthorized ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            <span className="text-[9px] uppercase tracking-wider">
+                              {commitment ? (isAvailable ? 'OVERRIDE YES' : 'IN CLASS') : (isAvailable ? 'AVAILABLE' : 'FREE / NO')}
+                            </span>
+
+                            {commitment ? (
+                              <div className="text-[8px] leading-tight font-normal text-amber-300 bg-black/60 px-1 py-0.5 rounded-sm w-full mt-0.5 truncate">
+                                [B-{commitment.batchId}] {commitment.courseCode} ({commitment.roomName})
+                              </div>
+                            ) : (
+                              <span className="text-[8px] opacity-75">
+                                {isAvailable ? '✓ Open' : '—'}
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Notes and Save Row */}
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 border border-black bg-neutral-50">
+            <div className="flex-1 min-w-[280px]">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-black mb-1">
-                Preference Notes / Remarks:
+                Preference Notes / Teaching Constraints:
               </label>
               <input
                 type="text"
-                placeholder="e.g. Prefers Tuesday mornings or no classes after 2 PM"
+                placeholder="e.g. Avoid late afternoons or prefers 2 classes per day"
                 value={preferenceNotes}
                 onChange={e => setPreferenceNotes(e.target.value)}
                 disabled={!isAuthorized}
                 className="w-full text-xs p-2 border border-black bg-white font-mono"
               />
             </div>
-          )}
 
-          {/* Save Button */}
-          {selectedTeacherId && isAuthorized && (
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleSavePreference}
-                disabled={isSaving}
-                className="w-full py-2.5 px-4 bg-black text-white text-xs font-bold uppercase tracking-wider border-2 border-black hover:bg-neutral-800 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                <span>{isSaving ? 'Saving...' : 'Save Availability Preference'}</span>
-              </button>
+            {isAuthorized && (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSavePreference}
+                  disabled={isSaving}
+                  className="py-2.5 px-6 bg-black text-white text-xs font-bold uppercase tracking-wider border-2 border-black hover:bg-neutral-800 disabled:opacity-50 transition-colors flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isSaving ? 'Saving...' : 'Save Availability Preference'}</span>
+                </button>
 
-              {saveSuccessMsg && (
-                <div className="mt-2 text-xs font-mono font-bold text-black flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{saveSuccessMsg}</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Step 2: Interactive Slots Matrix */}
-        <div className="md:col-span-2">
-          <label className="block text-xs font-bold uppercase tracking-wider text-black mb-2">
-            2. Available Periods Grid (Click cells to toggle availability):
-          </label>
-
-          {!selectedTeacherId ? (
-            <div className="h-64 border-2 border-dashed border-neutral-300 flex flex-col items-center justify-center text-neutral-500 font-mono text-xs">
-              <Calendar className="w-8 h-8 mb-2 opacity-40 text-black" />
-              <span>Please select a faculty member on the left to configure availability</span>
-            </div>
-          ) : (
-            <div className="overflow-x-auto border-2 border-black">
-              <table className="w-full text-center border-collapse text-xs font-mono">
-                <thead>
-                  <tr className="bg-black text-white text-[10px]">
-                    <th className="p-2 border-r border-neutral-700 w-16">Day</th>
-                    {PERIODS.map(p => (
-                      <th key={p} className="p-1.5 border-r border-neutral-700 min-w-[50px]">
-                        <div>P{p}</div>
-                        <div className="text-[8px] font-normal opacity-75">{PERIOD_LABELS[p].split(' - ')[0]}</div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {DAYS.map(day => (
-                    <tr key={day} className="border-b border-black">
-                      <td className="p-2 border-r border-black font-bold bg-neutral-100 text-black text-xs">
-                        {day}
-                      </td>
-                      {PERIODS.map(p => {
-                        const slotKey = `${day}-${p}`;
-                        const isAvailable = selectedSlots.includes(slotKey);
-
-                        return (
-                          <td 
-                            key={p} 
-                            className="p-1 border-r border-black last:border-r-0"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleToggleSlot(slotKey)}
-                              disabled={!isAuthorized}
-                              title={`${day} Period ${p} (${PERIOD_LABELS[p]}): ${isAvailable ? 'Available' : 'Unavailable'}`}
-                              className={`w-full py-2 px-1 text-[10px] font-bold border transition-colors ${
-                                isAvailable
-                                  ? 'bg-black text-white border-black hover:bg-neutral-800'
-                                  : 'bg-neutral-50 text-neutral-400 border-neutral-300 hover:bg-neutral-200 hover:text-black line-through'
-                              } ${!isAuthorized ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                            >
-                              {isAvailable ? 'YES' : 'NO'}
-                            </button>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Summary Table: Configured Faculty Availability for this Batch */}
-      {teachersWithPrefs.length > 0 && (
-        <div className="mt-8 pt-6 border-t-2 border-black">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-black flex items-center gap-2">
-              <User className="w-4 h-4" />
-              <span>Configured Teacher Availability Preferences ({teachersWithPrefs.length} Recorded)</span>
-            </h4>
-            <span className="text-[11px] font-mono text-neutral-500">
-              Batch {currentBatchId} Master Records
-            </span>
-          </div>
-
-          <div className="border border-black overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs font-mono">
-              <thead>
-                <tr className="bg-neutral-100 border-b border-black text-[11px] uppercase">
-                  <th className="p-2.5 border-r border-black font-bold">Faculty Member</th>
-                  <th className="p-2.5 border-r border-black font-bold">Available Slots</th>
-                  <th className="p-2.5 border-r border-black font-bold">Availability Summary</th>
-                  <th className="p-2.5 border-r border-black font-bold">Remarks</th>
-                  <th className="p-2.5 font-bold text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black">
-                {teachersWithPrefs.map(pref => {
-                  const teacher = teachers.find(t => t.id === pref.teacherId);
-                  if (!teacher) return null;
-                  const count = pref.availabilitySlots?.length || 0;
-
-                  return (
-                    <tr key={pref.teacherId} className="hover:bg-neutral-50 transition-colors">
-                      <td className="p-2.5 border-r border-black font-medium">
-                        <div className="font-bold text-black">{teacher.name}</div>
-                        <div className="text-[10px] text-neutral-600">{teacher.designation} ({teacher.initials})</div>
-                      </td>
-                      <td className="p-2.5 border-r border-black font-bold">
-                        <span className="px-2 py-0.5 bg-black text-white text-[10px]">
-                          {count} / 45 Slots
-                        </span>
-                      </td>
-                      <td className="p-2.5 border-r border-black text-[11px] text-neutral-700">
-                        {count === 45 ? (
-                          <span className="text-neutral-800 font-bold">Flexible across all working days</span>
-                        ) : (
-                          <span>
-                            Available on {Array.from(new Set(pref.availabilitySlots?.map(s => s.split('-')[0]))).join(', ')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-2.5 border-r border-black text-[11px] text-neutral-600 italic">
-                        {pref.notes || '—'}
-                      </td>
-                      <td className="p-2.5 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTeacherId(teacher.id)}
-                          className="px-2 py-1 text-[10px] font-bold border border-black bg-white hover:bg-black hover:text-white transition-colors"
-                        >
-                          Edit Slots
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                {saveSuccessMsg && (
+                  <div className="text-xs font-mono font-bold text-black flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-700" />
+                    <span>{saveSuccessMsg}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -69,15 +69,17 @@ export const RoutineProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let isMounted = true;
     const initData = async () => {
       try {
-        const [backendTeachers, backendRooms, backendBatches] = await Promise.all([
+        const [backendTeachers, backendRooms, backendBatches, backendSlots] = await Promise.all([
           api.getTeachers(),
           api.getRooms(),
-          api.getBatches()
+          api.getBatches(),
+          api.getAllRoutineSlots()
         ]);
 
         if (isMounted) {
           if (backendTeachers.length > 0) setTeachers(backendTeachers);
           if (backendRooms.length > 0) setRooms(backendRooms);
+          if (backendSlots.length > 0) setSlots(backendSlots);
           if (backendBatches.length > 0) {
             setBatches(prev => {
               // Merge backend batches with existing defaults
